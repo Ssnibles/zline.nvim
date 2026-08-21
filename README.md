@@ -135,7 +135,7 @@ vim.api.nvim_set_hl(0, "StlBarNC", { bg = "#181825", fg = "#6c7086" })
 ![visual](./pictures/visual.png)
 
 > [!NOTE]
-> The colourscheme used is [Vague.nvim](https://github.com/vague-theme/vague.nvim)
+> The colourscheme used is [vague.nvim](https://github.com/vague-theme/vague.nvim)
 
 ---
 
