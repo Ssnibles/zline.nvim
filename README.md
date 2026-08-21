@@ -97,21 +97,33 @@ require("zline").setup({
 
 | Highlight Group   | Default Link      | Description                                                |
 | :---------------- | :---------------- | :--------------------------------------------------------- |
+| `StlBar`          | `StatusLine`      | Primary statusline background and fill bar                 |
+| `StlBarNC`        | `StatusLineNC`    | Inactive split statusline background bar                   |
 | `StlModeN`        | `StatusLine`      | Normal Mode badge                                          |
 | `StlModeI`        | `ModeMsg`         | Insert Mode badge                                          |
 | `StlModeV`        | `Visual`          | Visual Mode badge                                          |
 | `StlModeC`        | `Command`         | Command Mode badge                                         |
 | `StlCmdPrompt`    | Accent colour     | Command prompt icon (`>`) when `cmdline_prompt_bg = false` |
 | `StlSearchPrompt` | Search Accent     | Search prompt icon (`󰍉`) when `cmdline_prompt_bg = false`  |
-| `StlGit`          | `StatusLine`      | Git branch indicator                                       |
+| `StlGit`          | `StlBar`          | Git branch indicator                                       |
 | `StlGitAdd`       | `GitSignsAdd`     | Git added line count (`+3`)                                |
 | `StlGitChange`    | `GitSignsChange`  | Git modified line count (`~2`)                             |
 | `StlGitDelete`    | `GitSignsDelete`  | Git deleted line count (`-1`)                              |
+| `StlFile`         | `StlBar`          | Active file path display                                   |
+| `StlFT`           | `StlBar`          | Filetype indicator badge                                   |
+| `StlPos`          | `StlBar`          | Cursor position and total line count                       |
 | `StlDiag`         | `DiagnosticError` | LSP error & warning summary                                |
 | `StlSearch`       | `IncSearch`       | Search match counter badge                                 |
 | `StlWarn`         | `WarningMsg`      | Format/encoding warning badge                              |
 | `StlSelection`    | `Visual`          | Visual selection range metrics                             |
 | `StlDap`          | `DiagnosticWarn`  | Active DAP debugger status                                 |
+
+### Example override
+
+```lua
+vim.api.nvim_set_hl(0, "StlBar", { bg = "#1e1e2e", fg = "#cdd6f4" })
+vim.api.nvim_set_hl(0, "StlBarNC", { bg = "#181825", fg = "#6c7086" })
+```
 
 ---
 
