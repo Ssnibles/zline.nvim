@@ -5,7 +5,7 @@ A lightweight, fast, pure Lua statusline plugin for Neovim with `mini.icons` int
 ## Features
 
 - **Icon Support**: Automatic integration with `mini.icons` for file, filetype, LSP, and git icons (with sensible fallbacks).
-- **Mode Indicators**: Mode display with customizable highlight groups (`StlModeN`, `StlModeI`, etc.).
+- **Mode Indicators**: Mode display with customisable highlight groups (`StlModeN`, `StlModeI`, etc.).
 - **Git Status**: Direct integration with Gitsigns buffer variables (`vim.b.gitsigns_*`).
 - **LSP Diagnostics**: Native summary using `vim.diagnostic.count`.
 - **Attached LSP Clients**: Dynamic listing of attached language servers.
