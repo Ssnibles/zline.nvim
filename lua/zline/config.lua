@@ -19,6 +19,21 @@ local M = {}
 --- @class ZlineFilenameOpts
 --- @field margin_right integer Safety margin subtracted from available horizontal width
 
+--- @class ZlineShowOpts
+--- @field mode? boolean Whether to render mode indicator badge
+--- @field selection? boolean Whether to render visual selection metrics
+--- @field macro? boolean Whether to render macro recording register indicator
+--- @field search? boolean Whether to render active search match counter
+--- @field git? boolean Whether to render git branch and diff summary
+--- @field diagnostics? boolean Whether to render LSP diagnostics summary
+--- @field filename? boolean Whether to render file path component
+--- @field dap? boolean Whether to render active DAP debugger status
+--- @field spell? boolean Whether to render active spell checking indicator
+--- @field format_warn? boolean Whether to render format and encoding warning badges
+--- @field lsp? boolean Whether to render active LSP client names
+--- @field filetype? boolean Whether to render filetype badge
+--- @field position? boolean Whether to render cursor position and line counts
+
 --- @class ZlineOpts
 --- @field use_icons boolean Whether to display mini.icons or Nerd Font symbols
 --- @field coloured_diff boolean Whether to render git diff counters in green, yellow, and red
@@ -26,6 +41,7 @@ local M = {}
 --- @field cmdline_prompt_bg boolean Whether to display a solid background badge for command prompts
 --- @field disabled_filetypes string[] List of filetypes where the statusline is hidden
 --- @field disabled_buftypes string[] List of buffer types where the statusline is hidden
+--- @field show ZlineShowOpts Component visibility toggles
 --- @field icons ZlineIcons Icon glyph mappings
 --- @field filename_opts ZlineFilenameOpts Path truncation parameters
 
@@ -45,6 +61,21 @@ M.defaults = {
 		"snacks_starter",
 	},
 	disabled_buftypes = {},
+	show = {
+		mode = true,
+		selection = true,
+		macro = true,
+		search = true,
+		git = true,
+		diagnostics = true,
+		filename = true,
+		dap = true,
+		spell = true,
+		format_warn = true,
+		lsp = false,
+		filetype = true,
+		position = true,
+	},
 	icons = {
 		git = "",
 		error = "󰅚",

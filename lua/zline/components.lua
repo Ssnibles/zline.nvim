@@ -70,9 +70,17 @@ local function create_component(render_fn, hl_fn)
 	return { render = render_fn, hl = hl_fn }
 end
 
+--- Check whether component key is enabled in configuration options
+--- @param component_key string Component toggle identifier
+--- @return boolean is_enabled
+local function is_enabled(component_key)
+	return not (config.options.show and config.options.show[component_key] == false)
+end
+
 --- Mode indicator component
 M.mode = create_component(
 	function()
+		if not is_enabled("mode") then return nil end
 		local active_mode = vim.api.nvim_get_mode().mode
 		return " " .. (mode_map[active_mode] or "?") .. " "
 	end,
@@ -85,6 +93,7 @@ M.mode = create_component(
 --- Visual selection metrics component (lines/characters)
 M.selection = create_component(
 	function()
+		if not is_enabled("selection") then return nil end
 		local mode_code = vim.api.nvim_get_mode().mode
 		if mode_code ~= "v" and mode_code ~= "V" and mode_code ~= "\x16" then return nil end
 
@@ -115,6 +124,7 @@ M.selection = create_component(
 --- Macro recording register indicator component
 M.macro = create_component(
 	function()
+		if not is_enabled("macro") then return nil end
 		local active_register = vim.fn.reg_recording()
 		if active_register == "" then return nil end
 		local icon_glyph = config.options.use_icons and "󰑋 " or "REC "
@@ -126,6 +136,7 @@ M.macro = create_component(
 --- Search match counter component
 M.search = create_component(
 	function()
+		if not is_enabled("search") then return nil end
 		if vim.v.hlsearch ~= 1 then return nil end
 		local is_ok, search_result = pcall(vim.fn.searchcount, { maxcount = 999, timeout = 100 })
 		if not is_ok or not search_result or not search_result.total or search_result.total == 0 then return nil end
@@ -140,6 +151,7 @@ M.search = create_component(
 --- Git status and diff component
 M.git = create_component(
 	function()
+		if not is_enabled("git") then return nil end
 		local branch_name = git.get_branch()
 		if not branch_name or branch_name == "" then return nil end
 
@@ -184,6 +196,7 @@ M.git = create_component(
 --- LSP diagnostics summary component
 M.diagnostics = create_component(
 	function()
+		if not is_enabled("diagnostics") then return nil end
 		local diagnostic_counts = vim.diagnostic.count(0)
 		local error_count = diagnostic_counts[vim.diagnostic.severity.ERROR] or 0
 		local warning_count = diagnostic_counts[vim.diagnostic.severity.WARN] or 0
@@ -210,6 +223,7 @@ M.diagnostics = create_component(
 --- Dynamic filename and special window header component
 M.filename = create_component(
 	function(options)
+		if not is_enabled("filename") then return "" end
 		options = options or { avail = 30, margin_right = 6 }
 		local buffer_type = vim.bo.buftype
 		local file_type = vim.bo.filetype
@@ -274,6 +288,7 @@ M.filename = create_component(
 --- Active DAP debugger status component
 M.dap_status = create_component(
 	function()
+		if not is_enabled("dap") then return nil end
 		if not package.loaded["dap"] then return nil end
 		local is_available, dap_module = pcall(require, "dap")
 		if not is_available or not dap_module then return nil end
@@ -288,6 +303,7 @@ M.dap_status = create_component(
 --- Spell checking indicator component
 M.spell = create_component(
 	function()
+		if not is_enabled("spell") then return nil end
 		if not vim.wo.spell then return nil end
 		local icon_glyph = config.options.use_icons and (config.options.icons and config.options.icons.spell or "󰓆") or ""
 		local icon_prefix = icon_glyph ~= "" and (icon_glyph .. " ") or ""
@@ -299,6 +315,7 @@ M.spell = create_component(
 --- Format and encoding warning component
 M.format_warn = create_component(
 	function()
+		if not is_enabled("format_warn") then return nil end
 		local file_format = vim.bo.fileformat
 		local file_encoding = vim.bo.fileencoding
 		local warning_parts = {}
@@ -321,6 +338,7 @@ M.format_warn = create_component(
 --- Active LSP clients component
 M.lsp = create_component(
 	function()
+		if not is_enabled("lsp") then return nil end
 		local active_clients = vim.lsp.get_clients({ bufnr = 0 })
 		if #active_clients == 0 then return nil end
 
@@ -336,6 +354,7 @@ M.lsp = create_component(
 --- Filetype indicator component
 M.filetype = create_component(
 	function()
+		if not is_enabled("filetype") then return nil end
 		local current_filetype = vim.bo.filetype
 		if current_filetype == "" then return nil end
 		local file_icon = icons.get_icon("filetype", current_filetype)
@@ -348,6 +367,7 @@ M.filetype = create_component(
 --- Cursor position component
 M.position = create_component(
 	function()
+		if not is_enabled("position") then return nil end
 		local current_line = vim.api.nvim_win_get_cursor(0)[1]
 		local total_lines = vim.api.nvim_buf_line_count(0)
 		return " " .. current_line .. "/" .. total_lines .. " "
