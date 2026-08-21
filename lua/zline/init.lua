@@ -3,6 +3,8 @@ local M = {}
 M.opts = {
 	use_icons = true,
 	colored_diff = true,
+	cmdline_in_statusline = true,
+	cmdline_prompt_bg = false,
 	icons = {
 		git = "",
 		error = "󰅚",
@@ -12,6 +14,7 @@ M.opts = {
 		delete = "-",
 		search = "󰍉",
 		warn_fmt = "⚠",
+		cmd = ">",
 	},
 	filename_opts = { margin_right = 6 },
 }
@@ -121,6 +124,50 @@ local special_filetypes = {
 	NvimTree = "NvimTree",
 	trouble = "Trouble",
 }
+
+local cmdline_active = false
+local cmdline_data = {
+	firstc = ":",
+	content = "",
+	pos = 1,
+}
+
+--- Render embedded Command-line / Search input bar in statusline
+---@return string
+local function render_cmdline()
+	local firstc = cmdline_data.firstc or ":"
+	local line = cmdline_data.content or ""
+	local pos = cmdline_data.pos or (#line + 1)
+
+	local left = line:sub(1, pos - 1)
+	local cur_char = line:sub(pos, pos)
+	if cur_char == "" then cur_char = " " end
+	local right = line:sub(pos + 1)
+
+	local icon = (M.opts.icons and M.opts.icons.cmd) or ">"
+	local type_label = "COMMAND"
+
+	if firstc == "/" then
+		icon = M.opts.use_icons and (M.opts.icons and M.opts.icons.search or "󰍉") or "/"
+		type_label = "SEARCH FORWARD"
+	elseif firstc == "?" then
+		icon = M.opts.use_icons and (M.opts.icons and M.opts.icons.search or "󰍉") or "?"
+		type_label = "SEARCH BACKWARD"
+	elseif firstc == "=" then
+		icon = "="
+		type_label = "EXPRESSION"
+	elseif firstc == "@" then
+		icon = "@"
+		type_label = "INPUT"
+	end
+
+	local hl_group = M.opts.cmdline_prompt_bg and "StlModeC" or "StlCmdPrompt"
+	local prompt = "%#" .. hl_group .. "# " .. icon .. " %*"
+	local content = " " .. left .. "%#StlCmdPos#" .. cur_char .. "%* %#StlCmdText#" .. right .. "%*"
+	local info = "%#StlCmdInfo# " .. type_label .. " %*"
+
+	return prompt .. content .. "%=" .. info
+end
 
 ---@class StatuslineComponent
 ---@field render function(opts?: table): string|nil Function that returns formatted component text or nil if hidden
@@ -413,9 +460,21 @@ local function setup_highlights()
 		StlFT = "StatusLine",
 		StlPos = "StatusLine",
 		StlMacro = "WarningMsg",
+		StlCmdPos = "Cursor",
+		StlCmdText = "StatusLine",
+		StlCmdInfo = "Comment",
 	}
 	for group, link in pairs(default_links) do
 		vim.api.nvim_set_hl(0, group, { default = true, link = link })
+	end
+
+	-- Extract accent foreground color for StlCmdPrompt from StlModeC without filled background block
+	local mode_c = vim.api.nvim_get_hl(0, { name = "StlModeC", link = false })
+	local prompt_fg = mode_c.bg or mode_c.fg
+	if prompt_fg then
+		vim.api.nvim_set_hl(0, "StlCmdPrompt", { fg = prompt_fg, bold = true, default = true })
+	else
+		vim.api.nvim_set_hl(0, "StlCmdPrompt", { link = "Statement", default = true })
 	end
 end
 
@@ -423,6 +482,11 @@ end
 --- Called by Neovim per window draw cycle via `%!v:lua...` string setting.
 ---@return string Statusline expression string
 function M.statusline()
+	-- Intercept active command-line mode (e.g. typing : command or / search)
+	if M.opts.cmdline_in_statusline and cmdline_active then
+		return render_cmdline()
+	end
+
 	local cur_win = vim.api.nvim_get_current_win()
 	local stl_win = vim.g.statusline_winid
 
@@ -494,6 +558,33 @@ function M.setup(opts)
 			git_cache = {}
 		end,
 	})
+
+	if M.opts.cmdline_in_statusline then
+		local ns = vim.api.nvim_create_namespace("zline_cmdline")
+		pcall(vim.ui_attach, ns, { ext_cmdline = true }, function(event, ...)
+			local args = { ... }
+			if event == "cmdline_show" then
+				local content_chunks = args[1] or {}
+				local str_table = {}
+				for _, chunk in ipairs(content_chunks) do
+					if type(chunk) == "table" and chunk[2] then
+						table.insert(str_table, chunk[2])
+					end
+				end
+				cmdline_data.content = table.concat(str_table)
+				cmdline_data.pos = (args[2] or 0) + 1
+				cmdline_data.firstc = (args[3] and args[3] ~= "") and args[3] or ":"
+				cmdline_active = true
+				vim.cmd("redrawstatus")
+			elseif event == "cmdline_pos" then
+				cmdline_data.pos = (args[1] or 0) + 1
+				vim.cmd("redrawstatus")
+			elseif event == "cmdline_hide" then
+				cmdline_active = false
+				vim.cmd("redrawstatus")
+			end
+		end)
+	end
 
 	vim.o.statusline = "%!v:lua.require('zline').statusline()"
 end
