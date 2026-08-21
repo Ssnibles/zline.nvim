@@ -55,11 +55,11 @@ function M.render()
 		type_label = "INPUT"
 	end
 
-	local prompt_segment = "%#" .. highlight_group .. "# " .. icon_symbol .. " %*"
-	local content_segment = " " .. left_part .. "%#StlCmdPos#" .. current_character .. "%* %#StlCmdText#" .. right_part .. "%*"
-	local info_segment = "%#StlCmdInfo# " .. type_label .. " %*"
+	local prompt_segment = "%#" .. highlight_group .. "# " .. icon_symbol .. " %#StlCmdText#"
+	local content_segment = " " .. left_part .. "%#StlCmdPos#" .. current_character .. "%#StlCmdText#" .. right_part .. "%#StlBar#"
+	local info_segment = "%#StlCmdInfo# " .. type_label .. " %#StlBar#"
 
-	return prompt_segment .. content_segment .. "%=" .. info_segment
+	return "%#StlBar#" .. prompt_segment .. content_segment .. "%=" .. info_segment
 end
 
 --- Initialise vim.ui_attach ext_cmdline listener for command-line interception
