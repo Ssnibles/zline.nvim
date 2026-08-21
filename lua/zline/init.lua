@@ -2,13 +2,20 @@ local M = {}
 
 M.opts = {
 	use_icons = true,
+	colored_diff = true,
 	icons = {
 		git = "",
 		error = "󰅚",
 		warn = "󰀦",
+		add = "+",
+		change = "~",
+		delete = "-",
 	},
 	filename_opts = { margin_right = 6 },
 }
+
+local MiniIcons = nil
+local mini_loaded = false
 
 --- Safely retrieve icon from mini.icons
 ---@param category string Category name ("file", "filetype", "extension", "directory", etc.)
@@ -19,8 +26,14 @@ local function get_icon(category, name)
 	if not M.opts.use_icons or not name or name == "" then
 		return nil, nil
 	end
-	local has_mini, MiniIcons = pcall(require, "mini.icons")
-	if has_mini and type(MiniIcons) == "table" and type(MiniIcons.get) == "function" then
+	if not mini_loaded then
+		local ok, mod = pcall(require, "mini.icons")
+		if ok and type(mod) == "table" and type(mod.get) == "function" then
+			MiniIcons = mod
+		end
+		mini_loaded = true
+	end
+	if MiniIcons then
 		local ok, icon, hl = pcall(MiniIcons.get, category, name)
 		if ok and icon and icon ~= "" then
 			-- Filter out generic default symbol returned by mini.icons when key is not found
@@ -32,6 +45,60 @@ local function get_icon(category, name)
 		end
 	end
 	return nil, nil
+end
+
+local git_cache = {}
+
+--- Fast resolution of Git branch name with zero-process .git/HEAD fallback
+---@return string|nil branch_name
+local function get_git_head()
+	-- 1. Use gitsigns buffer variable if available
+	local head = vim.b.gitsigns_head
+	if head and head ~= "" then return head end
+
+	-- 2. Fast fallback via .git/HEAD reading
+	local bufname = vim.api.nvim_buf_get_name(0)
+	local dir = bufname ~= "" and vim.fs.dirname(bufname) or vim.uv.cwd()
+	if not dir then return nil end
+
+	if git_cache[dir] ~= nil then
+		return git_cache[dir] ~= false and git_cache[dir] or nil
+	end
+
+	local git_root = vim.fs.find(".git", { upward = true, path = dir })[1]
+	if not git_root then
+		git_cache[dir] = false
+		return nil
+	end
+
+	local head_file = git_root .. "/HEAD"
+	local attr = vim.uv.fs_stat(git_root)
+	if attr and attr.type == "file" then
+		local f = io.open(git_root, "r")
+		if f then
+			local first_line = f:read("*l") or ""
+			f:close()
+			local gitdir = first_line:match("gitdir:%s*(.+)")
+			if gitdir then
+				if not gitdir:match("^/") then
+					gitdir = vim.fs.normalize(git_root:sub(1, -6) .. "/" .. gitdir)
+				end
+				head_file = gitdir .. "/HEAD"
+			end
+		end
+	end
+
+	local f = io.open(head_file, "r")
+	if f then
+		local line = f:read("*l") or ""
+		f:close()
+		local branch = line:match("ref: refs/heads/(.+)") or (line ~= "" and line:sub(1, 7) or nil)
+		git_cache[dir] = branch or false
+		return branch
+	end
+
+	git_cache[dir] = false
+	return nil
 end
 
 ---@class StatuslineComponent
@@ -76,16 +143,60 @@ local mode = component(
 	end
 )
 
+--- Macro Recording Indicator Component
+--- Displays active recording register when recording macros (e.g., 󰑋 @q)
+local macro = component(
+	function()
+		local reg = vim.fn.reg_recording()
+		if reg == "" then return nil end
+		local icon = M.opts.use_icons and "󰑋 " or "REC "
+		return " " .. icon .. "@" .. reg .. " "
+	end,
+	function() return "StlMacro" end
+)
+
 --- Git Status Component
---- Integrates directly with Gitsigns buffer variables (`vim.b.gitsigns_*`).
+--- Integrates directly with Gitsigns buffer variables (`vim.b.gitsigns_*`) with instant .git/HEAD fallback.
+--- Supports colored diff indicators (green for added, yellow for changed, red for deleted).
 local git = component(
 	function()
-		local head = vim.b.gitsigns_head
+		local head = get_git_head()
 		if not head or head == "" then return nil end
-		local status = vim.b.gitsigns_status
+
 		local icon = M.opts.use_icons and (M.opts.icons and M.opts.icons.git or "") or ""
 		local icon_str = icon ~= "" and (icon .. " ") or ""
-		return " " .. icon_str .. head .. (status and status ~= "" and (" " .. status) or "")
+
+		local diff_str = ""
+		local gdict = vim.b.gitsigns_status_dict
+		if M.opts.colored_diff and gdict then
+			local added = gdict.added or 0
+			local changed = gdict.changed or 0
+			local removed = gdict.removed or 0
+
+			local parts = {}
+			if added > 0 then
+				local add_symbol = (M.opts.icons and M.opts.icons.add) or "+"
+				table.insert(parts, "%#StlGitAdd#" .. add_symbol .. added .. "%#StlGit#")
+			end
+			if changed > 0 then
+				local change_symbol = (M.opts.icons and M.opts.icons.change) or "~"
+				table.insert(parts, "%#StlGitChange#" .. change_symbol .. changed .. "%#StlGit#")
+			end
+			if removed > 0 then
+				local delete_symbol = (M.opts.icons and M.opts.icons.delete) or "-"
+				table.insert(parts, "%#StlGitDelete#" .. delete_symbol .. removed .. "%#StlGit#")
+			end
+			if #parts > 0 then
+				diff_str = " " .. table.concat(parts, " ")
+			end
+		else
+			local status = vim.b.gitsigns_status
+			if status and status ~= "" then
+				diff_str = " " .. status
+			end
+		end
+
+		return " " .. icon_str .. head .. diff_str
 	end,
 	function() return "StlGit" end
 )
@@ -206,15 +317,52 @@ local position = component(
 )
 
 ---@type StatuslineComponent[]
-local left_bar = { mode, git, diagnostics }
+local left_bar = { mode, macro, git, diagnostics }
 
 ---@type StatuslineComponent[]
 local right_bar = { lsp, filetype, position }
+
+--- Ensure default fallback highlight groups exist without overriding user colors
+local function setup_highlights()
+	local default_links = {
+		StlModeN = "StatusLine",
+		StlModeI = "ModeMsg",
+		StlModeV = "Visual",
+		StlModeC = "Command",
+		StlModeS = "Select",
+		StlModeT = "Terminal",
+		StlModeR = "Replace",
+		StlGit = "StatusLine",
+		StlGitAdd = "GitSignsAdd",
+		StlGitChange = "GitSignsChange",
+		StlGitDelete = "GitSignsDelete",
+		StlDiag = "DiagnosticError",
+		StlFile = "StatusLine",
+		StlFT = "StatusLine",
+		StlPos = "StatusLine",
+		StlMacro = "WarningMsg",
+	}
+	for group, link in pairs(default_links) do
+		vim.api.nvim_set_hl(0, group, { default = true, link = link })
+	end
+end
 
 --- Main Statusline Evaluation Function
 --- Called by Neovim per window draw cycle via `%!v:lua...` string setting.
 ---@return string Statusline expression string
 function M.statusline()
+	local cur_win = vim.api.nvim_get_current_win()
+	local stl_win = vim.g.statusline_winid
+
+	-- Handle inactive window splits with a clean, minimal statusline
+	if stl_win and stl_win ~= cur_win then
+		local bufname = vim.api.nvim_buf_get_name(0)
+		local rel = bufname ~= "" and vim.fs.normalize(vim.fn.fnamemodify(bufname, ":.")) or "[No Name]"
+		local current_line = vim.api.nvim_win_get_cursor(0)[1]
+		local total_lines = vim.api.nvim_buf_line_count(0)
+		return "%#StatusLineNC# " .. rel .. "%= " .. current_line .. "/" .. total_lines .. " %*"
+	end
+
 	--- Evaluates a component group, constructing formatted statusline items and calculating visual width.
 	---@param section StatuslineComponent[]
 	---@return string formatted_str The concatenated statusline segment string
@@ -228,7 +376,9 @@ function M.statusline()
 				local hl = c.hl()
 				-- Embed highlight group switch (%#Group#) and highlight reset (%*) directly
 				table.insert(items, "%#" .. hl .. "#" .. text .. "%*")
-				width = width + vim.fn.strwidth(text)
+				-- Strip embedded highlight codes before computing cell width
+				local clean_text = (text:gsub("%%#[^#]*#", ""))
+				width = width + vim.fn.strwidth(clean_text)
 			end
 		end
 		return table.concat(items), width
@@ -263,6 +413,16 @@ function M.setup(opts)
 	if opts.hl_map then
 		hl_map = vim.tbl_extend("force", hl_map, opts.hl_map)
 	end
+
+	setup_highlights()
+
+	vim.api.nvim_create_autocmd({ "DirChanged", "FocusGained" }, {
+		group = vim.api.nvim_create_augroup("ZlineGitCache", { clear = true }),
+		callback = function()
+			git_cache = {}
+		end,
+	})
+
 	vim.o.statusline = "%!v:lua.require('zline').statusline()"
 end
 
