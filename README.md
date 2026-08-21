@@ -25,8 +25,7 @@ A blisteringly fast, modular, zero-dependency statusline plugin for Neovim writt
 
 ```lua
 {
-  "zline.nvim",
-  dir = "~/zline.nvim", -- or your repo path
+  "Ssnibles/zline.nvim",
   event = "VeryLazy",
   opts = {
     use_icons = true,
