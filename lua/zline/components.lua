@@ -31,19 +31,31 @@ local special_filetypes = {
 --- Map Neovim raw mode strings to concise statusline display indicators
 --- @type table<string, string>
 local mode_map = {
-	n = "N", i = "I", v = "V", V = "V",
-	["\x16"] = "V", c = "C", s = "S", S = "S",
-	["\x13"] = "S", t = "T", R = "R", r = "R",
-	["!"] = "!", rm = "R",
+	n = "N", niI = "N", niR = "N", niV = "N",
+	nt = "T-N", ntT = "T-N",
+	no = "O-P", nov = "O-P", noV = "O-P", ["no\x22"] = "O-P",
+	i = "I", ic = "I", ix = "I",
+	v = "V", V = "V", ["\x16"] = "V",
+	s = "S", S = "S", ["\x13"] = "S",
+	c = "C", cv = "C", ce = "C",
+	t = "T",
+	R = "R", r = "R", rm = "R", Rc = "R", Rx = "R", Rv = "R", Rvc = "R", Rvr = "R",
+	["!"] = "!",
 }
 
 --- Map Neovim raw mode strings directly to custom highlight groups
 --- @type table<string, string>
 local highlight_map = {
-	n = "StlModeN", i = "StlModeI", v = "StlModeV", V = "StlModeV",
-	["\x16"] = "StlModeV", c = "StlModeC", s = "StlModeS", S = "StlModeS",
-	["\x13"] = "StlModeS", t = "StlModeT", R = "StlModeR", r = "StlModeR",
-	["!"] = "StlModeC", rm = "StlModeR",
+	n = "StlModeN", niI = "StlModeN", niR = "StlModeN", niV = "StlModeN",
+	nt = "StlModeT", ntT = "StlModeT",
+	no = "StlModeN", nov = "StlModeN", noV = "StlModeN", ["no\x22"] = "StlModeN",
+	i = "StlModeI", ic = "StlModeI", ix = "StlModeI",
+	v = "StlModeV", V = "StlModeV", ["\x16"] = "StlModeV",
+	s = "StlModeS", S = "StlModeS", ["\x13"] = "StlModeS",
+	c = "StlModeC", cv = "StlModeC", ce = "StlModeC",
+	t = "StlModeT",
+	R = "StlModeR", r = "StlModeR", rm = "StlModeR", Rc = "StlModeR", Rx = "StlModeR", Rv = "StlModeR", Rvc = "StlModeR", Rvr = "StlModeR",
+	["!"] = "StlModeC",
 }
 
 --- @class StatuslineComponent
@@ -58,41 +70,39 @@ local function create_component(render_fn, hl_fn)
 	return { render = render_fn, hl = hl_fn }
 end
 
-local active_mode_raw = "n"
-
 --- Mode indicator component
 M.mode = create_component(
 	function()
-		active_mode_raw = vim.api.nvim_get_mode().mode
-		return " " .. (mode_map[active_mode_raw] or "?") .. " "
+		local active_mode = vim.api.nvim_get_mode().mode
+		return " " .. (mode_map[active_mode] or "?") .. " "
 	end,
 	function()
-		return highlight_map[active_mode_raw] or "StlModeN"
+		local active_mode = vim.api.nvim_get_mode().mode
+		return highlight_map[active_mode] or "StlModeN"
 	end
 )
 
 --- Visual selection metrics component (lines/characters)
 M.selection = create_component(
 	function()
-		local mode_code = active_mode_raw
+		local mode_code = vim.api.nvim_get_mode().mode
 		if mode_code ~= "v" and mode_code ~= "V" and mode_code ~= "\x16" then return nil end
 
-		local start_pos = vim.fn.getpos("v")
-		local end_pos = vim.fn.getpos(".")
-		local start_line, start_col = start_pos[2], start_pos[3]
-		local end_line, end_col = end_pos[2], end_pos[3]
+		local start_line = vim.fn.line("v")
+		local end_line = vim.fn.line(".")
+		local start_vcol = vim.fn.virtcol("v")
+		local end_vcol = vim.fn.virtcol(".")
+
+		local line_count = math.abs(end_line - start_line) + 1
 
 		if mode_code == "V" then
-			local line_count = math.abs(end_line - start_line) + 1
 			return " " .. line_count .. "L "
 		elseif mode_code == "\x16" then
-			local line_count = math.abs(end_line - start_line) + 1
-			local col_count = math.abs(end_col - start_col) + 1
+			local col_count = math.abs(end_vcol - start_vcol) + 1
 			return " " .. line_count .. "L×" .. col_count .. "C "
 		else
-			local line_count = math.abs(end_line - start_line) + 1
 			if line_count == 1 then
-				local char_count = math.abs(end_col - start_col) + 1
+				local char_count = math.abs(end_vcol - start_vcol) + 1
 				return " " .. char_count .. "c "
 			else
 				return " " .. line_count .. "L "
@@ -244,14 +254,19 @@ M.filename = create_component(
 		local truncated_path = ""
 		for i = #path_segments, 1, -1 do
 			local candidate_path = path_segments[i] .. (truncated_path ~= "" and "/" or "") .. truncated_path
-			if vim.fn.strwidth(icon_prefix .. "…/" .. candidate_path .. file_suffix) <= target_width then
+			local candidate_prefix = i > 1 and "…/" or ""
+			if vim.fn.strwidth(icon_prefix .. candidate_prefix .. candidate_path .. file_suffix) <= target_width then
 				truncated_path = candidate_path
 			else
 				break
 			end
 		end
 
-		return " " .. icon_prefix .. "…/" .. (truncated_path ~= "" and truncated_path or path_segments[#path_segments]) .. file_suffix .. " "
+		local has_parents = #path_segments > 1 and truncated_path ~= relative_path
+		local prefix = has_parents and "…/" or ""
+		local display_path = truncated_path ~= "" and truncated_path or path_segments[#path_segments]
+
+		return " " .. icon_prefix .. prefix .. display_path .. file_suffix .. " "
 	end,
 	function() return "StlFile" end
 )
@@ -259,8 +274,9 @@ M.filename = create_component(
 --- Active DAP debugger status component
 M.dap_status = create_component(
 	function()
+		if not package.loaded["dap"] then return nil end
 		local is_available, dap_module = pcall(require, "dap")
-		if not is_available then return nil end
+		if not is_available or not dap_module then return nil end
 		local status_text = dap_module.status()
 		if not status_text or status_text == "" then return nil end
 		local icon_glyph = config.options.use_icons and (config.options.icons and config.options.icons.dap or "󰃤") or "DBG"

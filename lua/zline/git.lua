@@ -43,12 +43,12 @@ function M.get_branch()
 	if filesystem_stat and filesystem_stat.type == "file" then
 		local file_handle = io.open(git_root, "r")
 		if file_handle then
-			local first_line = file_handle:read("*l") or ""
+			local first_line = (file_handle:read("*l") or ""):gsub("\r", ""):gsub("%s*$", "")
 			file_handle:close()
 			local gitdir_path = first_line:match("gitdir:%s*(.+)")
 			if gitdir_path then
-				if not gitdir_path:match("^/") then
-					gitdir_path = vim.fs.normalize(git_root:sub(1, -6) .. "/" .. gitdir_path)
+				if not gitdir_path:match("^/") and not gitdir_path:match("^%a+:") then
+					gitdir_path = vim.fs.normalize(vim.fs.dirname(git_root) .. "/" .. gitdir_path)
 				end
 				head_file_path = gitdir_path .. "/HEAD"
 			end
@@ -57,9 +57,10 @@ function M.get_branch()
 
 	local file_handle = io.open(head_file_path, "r")
 	if file_handle then
-		local line_content = file_handle:read("*l") or ""
+		local raw_line = file_handle:read("*l") or ""
 		file_handle:close()
-		local branch_name = line_content:match("ref: refs/heads/(.+)") or (line_content ~= "" and line_content:sub(1, 7) or nil)
+		local line_content = raw_line:gsub("\r", ""):gsub("%s*$", "")
+		local branch_name = line_content:match("ref: refs/heads/(%S+)") or (line_content ~= "" and line_content:sub(1, 7) or nil)
 		branch_cache[directory] = branch_name or false
 		return branch_name
 	end

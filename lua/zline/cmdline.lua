@@ -28,12 +28,12 @@ end
 function M.render()
 	local prompt_character = cmdline_data.firstc or ":"
 	local line_content = cmdline_data.content or ""
-	local cursor_position = cmdline_data.pos or (#line_content + 1)
+	local cursor_position = cmdline_data.pos or 1
 
-	local left_part = line_content:sub(1, cursor_position - 1)
-	local current_character = line_content:sub(cursor_position, cursor_position)
+	local left_part = vim.fn.strcharpart(line_content, 0, cursor_position - 1)
+	local current_character = vim.fn.strcharpart(line_content, cursor_position - 1, 1)
 	if current_character == "" then current_character = " " end
-	local right_part = line_content:sub(cursor_position + 1)
+	local right_part = vim.fn.strcharpart(line_content, cursor_position)
 
 	local icon_symbol = (config.options.icons and config.options.icons.cmd) or ">"
 	local type_label = "COMMAND"

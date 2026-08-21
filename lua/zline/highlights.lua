@@ -31,6 +31,8 @@ local default_highlight_links = {
 	StlCmdInfo = "Comment",
 }
 
+local is_autocmd_setup = false
+
 --- Initialise highlight groups and derive foreground colours for prompt icons
 function M.setup()
 	for highlight_group, target_link in pairs(default_highlight_links) do
@@ -56,6 +58,16 @@ function M.setup()
 		vim.api.nvim_set_hl(0, "StlSearchPrompt", { fg = search_prompt_fg, bold = true, default = true })
 	else
 		vim.api.nvim_set_hl(0, "StlSearchPrompt", { link = "IncSearch", default = true })
+	end
+
+	if not is_autocmd_setup then
+		is_autocmd_setup = true
+		vim.api.nvim_create_autocmd("ColorScheme", {
+			group = vim.api.nvim_create_augroup("ZlineHighlights", { clear = true }),
+			callback = function()
+				M.setup()
+			end,
+		})
 	end
 end
 

@@ -24,6 +24,8 @@ local M = {}
 --- @field coloured_diff boolean Whether to render git diff counters in green, yellow, and red
 --- @field cmdline_in_statusline boolean Whether to embed command-line input into statusline
 --- @field cmdline_prompt_bg boolean Whether to display a solid background badge for command prompts
+--- @field disabled_filetypes string[] List of filetypes where the statusline is hidden
+--- @field disabled_buftypes string[] List of buffer types where the statusline is hidden
 --- @field icons ZlineIcons Icon glyph mappings
 --- @field filename_opts ZlineFilenameOpts Path truncation parameters
 
@@ -34,6 +36,15 @@ M.defaults = {
 	coloured_diff = true,
 	cmdline_in_statusline = true,
 	cmdline_prompt_bg = false,
+	disabled_filetypes = {
+		"ministarter",
+		"starter",
+		"dashboard",
+		"alpha",
+		"snacks_dashboard",
+		"snacks_starter",
+	},
+	disabled_buftypes = {},
 	icons = {
 		git = "",
 		error = "󰅚",

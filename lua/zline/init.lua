@@ -23,12 +23,23 @@ function M.statusline()
 	local current_window = vim.api.nvim_get_current_win()
 	local target_window = vim.g.statusline_winid
 
+	-- Check for disabled filetypes or buffer types
+	local active_buf = (target_window and target_window ~= current_window and vim.api.nvim_win_is_valid(target_window))
+		and vim.api.nvim_win_get_buf(target_window) or 0
+	local file_type = vim.bo[active_buf].filetype
+	local buffer_type = vim.bo[active_buf].buftype
+
+	if (config.options.disabled_filetypes and vim.tbl_contains(config.options.disabled_filetypes, file_type))
+		or (config.options.disabled_buftypes and vim.tbl_contains(config.options.disabled_buftypes, buffer_type)) then
+		return "%#StatusLine#"
+	end
+
 	-- Handle inactive window splits with a clean, minimal statusline
-	if target_window and target_window ~= current_window then
-		local buffer_name = vim.api.nvim_buf_get_name(0)
+	if target_window and target_window ~= current_window and vim.api.nvim_win_is_valid(target_window) then
+		local buffer_name = vim.api.nvim_buf_get_name(active_buf)
 		local relative_path = buffer_name ~= "" and vim.fs.normalize(vim.fn.fnamemodify(buffer_name, ":.")) or "[No Name]"
-		local current_line = vim.api.nvim_win_get_cursor(0)[1]
-		local total_lines = vim.api.nvim_buf_line_count(0)
+		local current_line = vim.api.nvim_win_get_cursor(target_window)[1]
+		local total_lines = vim.api.nvim_buf_line_count(active_buf)
 		return "%#StatusLineNC# " .. relative_path .. "%= " .. current_line .. "/" .. total_lines .. " %*"
 	end
 
@@ -44,7 +55,7 @@ function M.statusline()
 			if component_text then
 				local highlight_group = component.hl()
 				table.insert(rendered_items, "%#" .. highlight_group .. "#" .. component_text .. "%*")
-				local clean_text = (component_text:gsub("%%#[^#]*#", ""))
+				local clean_text = component_text:gsub("%%#[^#]*#", ""):gsub("%%%*", ""):gsub("%%%%", "%%")
 				visual_width = visual_width + vim.fn.strwidth(clean_text)
 			end
 		end
@@ -58,8 +69,8 @@ function M.statusline()
 	local non_filename_width = left_width + right_width
 	local window_width = vim.api.nvim_win_get_width(0)
 
-	-- Quantise available space down to steps of 5 for visually predictable truncation shifts
-	local available_width = math.max(10, math.floor((window_width - non_filename_width - 1) / 5) * 5)
+	-- Calculate smooth available width for path truncation
+	local available_width = math.max(10, window_width - non_filename_width - 1)
 
 	local filename_options = vim.tbl_extend("keep", { avail = available_width }, config.options.filename_opts or { margin_right = 6 })
 	local filename_text = "%#StlFile#" .. components.filename.render(filename_options) .. "%*"
@@ -73,7 +84,7 @@ function M.setup(user_options)
 	config.setup(user_options)
 	highlights.setup()
 
-	vim.api.nvim_create_autocmd({ "DirChanged", "FocusGained" }, {
+	vim.api.nvim_create_autocmd({ "DirChanged", "FocusGained", "BufEnter", "BufWritePost" }, {
 		group = vim.api.nvim_create_augroup("ZlineGitCache", { clear = true }),
 		callback = function()
 			git.clear_cache()
