@@ -6,6 +6,8 @@ local M = {}
 --- Default fallback highlight group link definitions
 --- @type table<string, string>
 local default_highlight_links = {
+	StlBar = "StatusLine",
+	StlBarNC = "StatusLineNC",
 	StlModeN = "StatusLine",
 	StlModeI = "ModeMsg",
 	StlModeV = "Visual",
@@ -13,28 +15,57 @@ local default_highlight_links = {
 	StlModeS = "Select",
 	StlModeT = "Terminal",
 	StlModeR = "Replace",
-	StlGit = "StatusLine",
+	StlGit = "StlBar",
 	StlGitAdd = "GitSignsAdd",
 	StlGitChange = "GitSignsChange",
 	StlGitDelete = "GitSignsDelete",
 	StlDiag = "DiagnosticError",
 	StlSearch = "IncSearch",
 	StlWarn = "WarningMsg",
-	StlFile = "StatusLine",
-	StlFT = "StatusLine",
-	StlPos = "StatusLine",
+	StlFile = "StlBar",
+	StlFT = "StlBar",
+	StlPos = "StlBar",
 	StlMacro = "WarningMsg",
 	StlSelection = "Visual",
 	StlDap = "DiagnosticWarn",
 	StlCmdPos = "Cursor",
-	StlCmdText = "StatusLine",
+	StlCmdText = "StlBar",
 	StlCmdInfo = "Comment",
 }
 
 local is_autocmd_setup = false
+local last_bar_bg = nil
+
+--- Synchronise normal statusline module backgrounds with StlBar background
+function M.sync_bar_background()
+	local bar_hl = vim.api.nvim_get_hl(0, { name = "StlBar", link = false })
+	if bar_hl.bg and bar_hl.bg ~= last_bar_bg then
+		local bar_linked_groups = {
+			"StlGit",
+			"StlGitAdd",
+			"StlGitChange",
+			"StlGitDelete",
+			"StlFile",
+			"StlFT",
+			"StlPos",
+			"StlCmdText",
+			"StlCmdPrompt",
+			"StlSearchPrompt",
+			"StlCmdInfo",
+		}
+		for _, hl_name in ipairs(bar_linked_groups) do
+			local hl_def = vim.api.nvim_get_hl(0, { name = hl_name, link = false })
+			hl_def.bg = bar_hl.bg
+			hl_def.default = nil
+			vim.api.nvim_set_hl(0, hl_name, hl_def)
+		end
+		last_bar_bg = bar_hl.bg
+	end
+end
 
 --- Initialise highlight groups and derive foreground colours for prompt icons
 function M.setup()
+	last_bar_bg = nil
 	for highlight_group, target_link in pairs(default_highlight_links) do
 		vim.api.nvim_set_hl(0, highlight_group, { default = true, link = target_link })
 	end
@@ -59,6 +90,8 @@ function M.setup()
 	else
 		vim.api.nvim_set_hl(0, "StlSearchPrompt", { link = "IncSearch", default = true })
 	end
+
+	M.sync_bar_background()
 
 	if not is_autocmd_setup then
 		is_autocmd_setup = true

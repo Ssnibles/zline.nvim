@@ -15,6 +15,8 @@ M.opts = config.options
 --- Main statusline evaluation entry point called per window draw cycle
 --- @return string formatted_statusline Statusline expression string
 function M.statusline()
+	highlights.sync_bar_background()
+
 	-- Intercept active command-line mode (e.g. typing : command or / search)
 	if config.options.cmdline_in_statusline and cmdline.is_active() then
 		return cmdline.render()
@@ -31,7 +33,7 @@ function M.statusline()
 
 	if (config.options.disabled_filetypes and vim.tbl_contains(config.options.disabled_filetypes, file_type))
 		or (config.options.disabled_buftypes and vim.tbl_contains(config.options.disabled_buftypes, buffer_type)) then
-		return "%#StatusLine#"
+		return "%#StlBar#"
 	end
 
 	-- Handle inactive window splits with a clean, minimal statusline
@@ -40,7 +42,7 @@ function M.statusline()
 		local relative_path = buffer_name ~= "" and vim.fs.normalize(vim.fn.fnamemodify(buffer_name, ":.")) or "[No Name]"
 		local current_line = vim.api.nvim_win_get_cursor(target_window)[1]
 		local total_lines = vim.api.nvim_buf_line_count(active_buf)
-		return "%#StatusLineNC# " .. relative_path .. "%= " .. current_line .. "/" .. total_lines .. " %*"
+		return "%#StlBarNC# " .. relative_path .. "%= " .. current_line .. "/" .. total_lines .. " %#StlBarNC#"
 	end
 
 	--- Evaluates a component group, constructing formatted statusline items and calculating visual width.
@@ -54,7 +56,7 @@ function M.statusline()
 			local component_text = component.render()
 			if component_text then
 				local highlight_group = component.hl()
-				table.insert(rendered_items, "%#" .. highlight_group .. "#" .. component_text .. "%*")
+				table.insert(rendered_items, "%#" .. highlight_group .. "#" .. component_text .. "%#StlBar#")
 				local clean_text = component_text:gsub("%%#[^#]*#", ""):gsub("%%%*", ""):gsub("%%%%", "%%")
 				visual_width = visual_width + vim.fn.strwidth(clean_text)
 			end
@@ -73,9 +75,9 @@ function M.statusline()
 	local available_width = math.max(10, window_width - non_filename_width - 1)
 
 	local filename_options = vim.tbl_extend("keep", { avail = available_width }, config.options.filename_opts or { margin_right = 6 })
-	local filename_text = "%#StlFile#" .. components.filename.render(filename_options) .. "%*"
+	local filename_text = "%#StlFile#" .. components.filename.render(filename_options) .. "%#StlBar#"
 
-	return left_segment .. "%<" .. filename_text .. "%=" .. right_segment
+	return "%#StlBar#" .. left_segment .. "%<" .. filename_text .. "%=" .. right_segment
 end
 
 --- Initialise zline statusline plugin
