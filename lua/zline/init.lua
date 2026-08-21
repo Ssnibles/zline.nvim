@@ -146,13 +146,16 @@ local function render_cmdline()
 
 	local icon = (M.opts.icons and M.opts.icons.cmd) or ">"
 	local type_label = "COMMAND"
+	local hl_group = M.opts.cmdline_prompt_bg and "StlModeC" or "StlCmdPrompt"
 
 	if firstc == "/" then
 		icon = M.opts.use_icons and (M.opts.icons and M.opts.icons.search or "󰍉") or "/"
 		type_label = "SEARCH FORWARD"
+		hl_group = M.opts.cmdline_prompt_bg and "StlSearch" or "StlSearchPrompt"
 	elseif firstc == "?" then
 		icon = M.opts.use_icons and (M.opts.icons and M.opts.icons.search or "󰍉") or "?"
 		type_label = "SEARCH BACKWARD"
+		hl_group = M.opts.cmdline_prompt_bg and "StlSearch" or "StlSearchPrompt"
 	elseif firstc == "=" then
 		icon = "="
 		type_label = "EXPRESSION"
@@ -161,7 +164,6 @@ local function render_cmdline()
 		type_label = "INPUT"
 	end
 
-	local hl_group = M.opts.cmdline_prompt_bg and "StlModeC" or "StlCmdPrompt"
 	local prompt = "%#" .. hl_group .. "# " .. icon .. " %*"
 	local content = " " .. left .. "%#StlCmdPos#" .. cur_char .. "%* %#StlCmdText#" .. right .. "%*"
 	local info = "%#StlCmdInfo# " .. type_label .. " %*"
@@ -475,6 +477,18 @@ local function setup_highlights()
 		vim.api.nvim_set_hl(0, "StlCmdPrompt", { fg = prompt_fg, bold = true, default = true })
 	else
 		vim.api.nvim_set_hl(0, "StlCmdPrompt", { link = "Statement", default = true })
+	end
+
+	-- Extract accent foreground color for StlSearchPrompt from StlSearch / IncSearch without filled background block
+	local search_hl = vim.api.nvim_get_hl(0, { name = "StlSearch", link = false })
+	if not search_hl.bg and not search_hl.fg then
+		search_hl = vim.api.nvim_get_hl(0, { name = "IncSearch", link = false })
+	end
+	local search_prompt_fg = search_hl.bg or search_hl.fg
+	if search_prompt_fg then
+		vim.api.nvim_set_hl(0, "StlSearchPrompt", { fg = search_prompt_fg, bold = true, default = true })
+	else
+		vim.api.nvim_set_hl(0, "StlSearchPrompt", { link = "IncSearch", default = true })
 	end
 end
 
