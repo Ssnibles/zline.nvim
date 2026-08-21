@@ -127,6 +127,15 @@ vim.api.nvim_set_hl(0, "StlBarNC", { bg = "#181825", fg = "#6c7086" })
 
 ---
 
+## 🖼️ Screenshots
+
+![bar](./pictures/bar.png)
+![cmd](./pictures/cmd.png)
+![search](./pictures/search.png)
+![visual](./pictures/visual.png)
+
+---
+
 ## 📄 License
 
 MIT
