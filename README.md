@@ -56,6 +56,21 @@ require("zline").setup({
     "snacks_starter",
   },
   disabled_buftypes = {},       -- Hide statusline in specific buffer types (e.g. "nofile", "terminal")
+  show = {                      -- Toggle individual components for an ultra-minimal bar
+    mode = true,                -- Mode indicator badge
+    selection = true,           -- Visual selection metrics
+    macro = true,               -- Macro recording register
+    search = true,              -- Search match counter
+    git = true,                 -- Git branch & diff summary
+    diagnostics = true,         -- LSP diagnostics summary
+    filename = true,            -- File path component
+    dap = true,                 -- Active DAP debugger status
+    spell = true,               -- Active spell checking indicator
+    format_warn = true,         -- Format/encoding warning badges
+    lsp = false,                -- Active LSP client names
+    filetype = true,            -- Filetype badge
+    position = true,            -- Cursor line/total line position
+  },
   icons = {
     git = "",
     error = "󰅚",
