@@ -10,6 +10,8 @@ M.opts = {
 		add = "+",
 		change = "~",
 		delete = "-",
+		search = "󰍉",
+		warn_fmt = "⚠",
 	},
 	filename_opts = { margin_right = 6 },
 }
@@ -101,6 +103,25 @@ local function get_git_head()
 	return nil
 end
 
+--- Special window and buffer type labels
+local special_buftypes = {
+	quickfix = "Quickfix",
+	help = "Help",
+	terminal = "Terminal",
+	prompt = "Prompt",
+}
+
+local special_filetypes = {
+	qf = "Quickfix",
+	help = "Help",
+	checkhealth = "Health",
+	lazy = "Lazy",
+	mason = "Mason",
+	oil = "Oil",
+	NvimTree = "NvimTree",
+	trouble = "Trouble",
+}
+
 ---@class StatuslineComponent
 ---@field render function(opts?: table): string|nil Function that returns formatted component text or nil if hidden
 ---@field hl function(): string Function returning the highlight group name for the component
@@ -153,6 +174,20 @@ local macro = component(
 		return " " .. icon .. "@" .. reg .. " "
 	end,
 	function() return "StlMacro" end
+)
+
+--- Search Count Component
+--- Displays active search match count [3/14] when searching with / or n/N
+local search = component(
+	function()
+		if vim.v.hlsearch ~= 1 then return nil end
+		local ok, sc = pcall(vim.fn.searchcount, { maxcount = 999, timeout = 100 })
+		if not ok or not sc or not sc.total or sc.total == 0 then return nil end
+		local icon = M.opts.use_icons and (M.opts.icons and M.opts.icons.search or "󰍉") or ""
+		local icon_str = icon ~= "" and (icon .. " ") or ""
+		return " " .. icon_str .. sc.current .. "/" .. sc.total .. " "
+	end,
+	function() return "StlSearch" end
 )
 
 --- Git Status Component
@@ -228,8 +263,8 @@ local diagnostics = component(
 	function() return "StlDiag" end
 )
 
---- Dynamic Filename Component
---- Dynamically truncates path segments right-to-left if width exceeds available budget, with mini.icons support.
+--- Dynamic Filename & Special Window Header Component
+--- Handles special window headers ([QUICKFIX], [HELP], [TERMINAL]) and adaptive right-to-left path truncation.
 ---@class FilenameOpts
 ---@field avail integer Available horizontal character width allocated for the filename
 ---@field margin_right? integer Safety margin subtracted from available width
@@ -237,6 +272,19 @@ local diagnostics = component(
 local filename = component(
 	---@param opts FilenameOpts
 	function(opts)
+		local bt = vim.bo.buftype
+		local ft = vim.bo.filetype
+
+		-- Handle special non-file buffer windows
+		if bt ~= "" then
+			local title = special_buftypes[bt] or (ft ~= "" and ft or bt)
+			return " [" .. title:upper() .. "] "
+		end
+
+		if special_filetypes[ft] then
+			return " [" .. special_filetypes[ft]:upper() .. "] "
+		end
+
 		local target = math.max(10, opts.avail - (opts.margin_right or 0))
 		local bufname = vim.api.nvim_buf_get_name(0)
 
@@ -273,6 +321,28 @@ local filename = component(
 		return " " .. icon_str .. "…/" .. (result ~= "" and result or parts[#parts]) .. suf .. " "
 	end,
 	function() return "StlFile" end
+)
+
+--- Format & Encoding Warning Component
+--- Only displays warning badges when non-unix line endings (CRLF/DOS) or non-UTF-8 encodings are active.
+local format_warn = component(
+	function()
+		local ff = vim.bo.fileformat
+		local enc = vim.bo.fileencoding
+		local parts = {}
+		if ff ~= "" and ff ~= "unix" then
+			table.insert(parts, ff:upper())
+		end
+		if enc ~= "" and enc ~= "utf-8" and enc ~= "utf8" then
+			table.insert(parts, enc:upper())
+		end
+		if #parts == 0 then return nil end
+
+		local icon = M.opts.use_icons and (M.opts.icons and M.opts.icons.warn_fmt or "⚠") or ""
+		local icon_str = icon ~= "" and (icon .. " ") or ""
+		return " " .. icon_str .. table.concat(parts, " ") .. " "
+	end,
+	function() return "StlWarn" end
 )
 
 --- Active LSP Clients Component
@@ -317,10 +387,10 @@ local position = component(
 )
 
 ---@type StatuslineComponent[]
-local left_bar = { mode, macro, git, diagnostics }
+local left_bar = { mode, macro, search, git, diagnostics }
 
 ---@type StatuslineComponent[]
-local right_bar = { lsp, filetype, position }
+local right_bar = { format_warn, lsp, filetype, position }
 
 --- Ensure default fallback highlight groups exist without overriding user colors
 local function setup_highlights()
@@ -337,6 +407,8 @@ local function setup_highlights()
 		StlGitChange = "GitSignsChange",
 		StlGitDelete = "GitSignsDelete",
 		StlDiag = "DiagnosticError",
+		StlSearch = "IncSearch",
+		StlWarn = "WarningMsg",
 		StlFile = "StatusLine",
 		StlFT = "StatusLine",
 		StlPos = "StatusLine",
