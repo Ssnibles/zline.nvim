@@ -17,6 +17,19 @@ local cmdline_data = {
 	pos = 1,
 }
 
+--- Pending redraw flag to coalesce multiple schedule calls within the same event loop tick
+local redraw_pending = false
+
+--- Schedule a statusline redraw safely from fast UI-attach callback contexts
+local function schedule_redraw()
+	if redraw_pending then return end
+	redraw_pending = true
+	vim.schedule(function()
+		redraw_pending = false
+		vim.cmd("redrawstatus")
+	end)
+end
+
 --- Check whether command-line mode is currently active
 --- @return boolean is_active
 function M.is_active()
@@ -39,14 +52,28 @@ function M.render()
 	local type_label = "COMMAND"
 	local highlight_group = config.options.cmdline_prompt_bg and "StlModeC" or "StlCmdPrompt"
 
-	if prompt_character == "/" then
-		icon_symbol = config.options.use_icons and (config.options.icons and config.options.icons.search or "󰍉") or "/"
-		type_label = "SEARCH FORWARD"
+	if prompt_character == "/" or prompt_character == "?" then
+		icon_symbol = config.options.use_icons
+			and (config.options.icons and config.options.icons.search or "󰍉")
+			or prompt_character
 		highlight_group = config.options.cmdline_prompt_bg and "StlSearch" or "StlSearchPrompt"
-	elseif prompt_character == "?" then
-		icon_symbol = config.options.use_icons and (config.options.icons and config.options.icons.search or "󰍉") or "?"
-		type_label = "SEARCH BACKWARD"
-		highlight_group = config.options.cmdline_prompt_bg and "StlSearch" or "StlSearchPrompt"
+
+		-- Compute live search match count for the pattern being typed
+		local direction_label = prompt_character == "/" and "FWD" or "BWD"
+		if line_content ~= "" then
+			local is_ok, search_result = pcall(vim.fn.searchcount, { pattern = line_content, maxcount = 999, timeout = 50 })
+			if is_ok and search_result and search_result.total then
+				if search_result.total > 0 then
+					type_label = search_result.current .. "/" .. search_result.total .. " " .. direction_label
+				else
+					type_label = "NO MATCH"
+				end
+			else
+				type_label = "SEARCH " .. direction_label
+			end
+		else
+			type_label = "SEARCH " .. direction_label
+		end
 	elseif prompt_character == "=" then
 		icon_symbol = "="
 		type_label = "EXPRESSION"
@@ -66,26 +93,26 @@ end
 function M.setup()
 	local namespace_id = vim.api.nvim_create_namespace("zline_cmdline")
 	pcall(vim.ui_attach, namespace_id, { ext_cmdline = true }, function(event_name, ...)
-		local event_arguments = { ... }
 		if event_name == "cmdline_show" then
-			local content_chunks = event_arguments[1] or {}
+			local content_chunks = select(1, ...)
 			local text_segments = {}
-			for _, chunk in ipairs(content_chunks) do
+			for _, chunk in ipairs(content_chunks or {}) do
 				if type(chunk) == "table" and chunk[2] then
 					table.insert(text_segments, chunk[2])
 				end
 			end
 			cmdline_data.content = table.concat(text_segments)
-			cmdline_data.pos = (event_arguments[2] or 0) + 1
-			cmdline_data.firstc = (event_arguments[3] and event_arguments[3] ~= "") and event_arguments[3] or ":"
+			cmdline_data.pos = (select(2, ...) or 0) + 1
+			local firstc = select(3, ...)
+			cmdline_data.firstc = (firstc and firstc ~= "") and firstc or ":"
 			is_cmdline_active = true
-			vim.cmd("redrawstatus")
+			schedule_redraw()
 		elseif event_name == "cmdline_pos" then
-			cmdline_data.pos = (event_arguments[1] or 0) + 1
-			vim.cmd("redrawstatus")
+			cmdline_data.pos = (select(1, ...) or 0) + 1
+			schedule_redraw()
 		elseif event_name == "cmdline_hide" then
 			is_cmdline_active = false
-			vim.cmd("redrawstatus")
+			schedule_redraw()
 		end
 	end)
 end

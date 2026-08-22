@@ -77,16 +77,18 @@ local function is_enabled(component_key)
 	return not (config.options.show and config.options.show[component_key] == false)
 end
 
+--- Cached mode string shared between render() and hl() to avoid duplicate C-API calls
+local cached_mode = "n"
+
 --- Mode indicator component
 M.mode = create_component(
 	function()
 		if not is_enabled("mode") then return nil end
-		local active_mode = vim.api.nvim_get_mode().mode
-		return " " .. (mode_map[active_mode] or "?") .. " "
+		cached_mode = vim.api.nvim_get_mode().mode
+		return " " .. (mode_map[cached_mode] or "?") .. " "
 	end,
 	function()
-		local active_mode = vim.api.nvim_get_mode().mode
-		return highlight_map[active_mode] or "StlModeN"
+		return highlight_map[cached_mode] or "StlModeN"
 	end
 )
 
@@ -193,7 +195,7 @@ M.git = create_component(
 	function() return "StlGit" end
 )
 
---- LSP diagnostics summary component
+--- LSP diagnostics summary component with per-severity colouring
 M.diagnostics = create_component(
 	function()
 		if not is_enabled("diagnostics") then return nil end
@@ -213,8 +215,12 @@ M.diagnostics = create_component(
 		end
 
 		local count_parts = {}
-		if error_count > 0 then table.insert(count_parts, error_icon .. " " .. error_count) end
-		if warning_count > 0 then table.insert(count_parts, warning_icon .. " " .. warning_count) end
+		if error_count > 0 then
+			table.insert(count_parts, "%%#StlDiagError#" .. error_icon .. " " .. error_count)
+		end
+		if warning_count > 0 then
+			table.insert(count_parts, "%%#StlDiagWarn#" .. warning_icon .. " " .. warning_count)
+		end
 		return " " .. table.concat(count_parts, " ")
 	end,
 	function() return "StlDiag" end
@@ -234,6 +240,14 @@ M.filename = create_component(
 				local qf_list = vim.fn.getqflist({ idx = 0, size = 0 })
 				if qf_list and qf_list.size > 0 then
 					return " [QUICKFIX " .. qf_list.idx .. "/" .. qf_list.size .. "] "
+				end
+			end
+			-- Terminal buffer: extract running command name from channel info
+			if buffer_type == "terminal" then
+				local is_ok, chan_info = pcall(vim.api.nvim_get_chan_info, vim.bo.channel or 0)
+				if is_ok and chan_info and chan_info.argv and chan_info.argv[1] then
+					local cmd_name = vim.fn.fnamemodify(chan_info.argv[1], ":t")
+					return " [" .. cmd_name:upper() .. "] "
 				end
 			end
 			local header_title = special_buftypes[buffer_type] or (file_type ~= "" and file_type or buffer_type)

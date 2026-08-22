@@ -12,6 +12,25 @@ local M = {}
 --- Expose configuration options table
 M.opts = config.options
 
+--- Evaluates a component group, constructing formatted statusline items and calculating visual width.
+--- @param section_components StatuslineComponent[]
+--- @return string formatted_segment The concatenated statusline segment string
+--- @return integer visual_width Total visual display width in cells
+local function evaluate_section(section_components)
+	local rendered_items = {}
+	local visual_width = 0
+	for _, component in ipairs(section_components) do
+		local component_text = component.render()
+		if component_text then
+			local highlight_group = component.hl()
+			table.insert(rendered_items, "%#" .. highlight_group .. "#" .. component_text .. "%#StlBar#")
+			local clean_text = component_text:gsub("%%#[^#]*#", ""):gsub("%%%*", ""):gsub("%%%%", "%%")
+			visual_width = visual_width + vim.api.nvim_strwidth(clean_text)
+		end
+	end
+	return table.concat(rendered_items), visual_width
+end
+
 --- Main statusline evaluation entry point called per window draw cycle
 --- @return string formatted_statusline Statusline expression string
 function M.statusline()
@@ -43,25 +62,6 @@ function M.statusline()
 		local current_line = vim.api.nvim_win_get_cursor(target_window)[1]
 		local total_lines = vim.api.nvim_buf_line_count(active_buf)
 		return "%#StlBarNC# " .. relative_path .. "%= " .. current_line .. "/" .. total_lines .. " %#StlBarNC#"
-	end
-
-	--- Evaluates a component group, constructing formatted statusline items and calculating visual width.
-	--- @param section_components StatuslineComponent[]
-	--- @return string formatted_segment The concatenated statusline segment string
-	--- @return integer visual_width Total visual display width in cells
-	local function evaluate_section(section_components)
-		local rendered_items = {}
-		local visual_width = 0
-		for _, component in ipairs(section_components) do
-			local component_text = component.render()
-			if component_text then
-				local highlight_group = component.hl()
-				table.insert(rendered_items, "%#" .. highlight_group .. "#" .. component_text .. "%#StlBar#")
-				local clean_text = component_text:gsub("%%#[^#]*#", ""):gsub("%%%*", ""):gsub("%%%%", "%%")
-				visual_width = visual_width + vim.fn.strwidth(clean_text)
-			end
-		end
-		return table.concat(rendered_items), visual_width
 	end
 
 	local left_segment, left_width = evaluate_section(components.left_components)

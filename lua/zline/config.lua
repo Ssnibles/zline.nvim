@@ -98,11 +98,10 @@ M.defaults = {
 --- @type ZlineOpts
 M.options = vim.deepcopy(M.defaults)
 
---- Merge user configuration into active runtime options
+--- Merge user configuration into active runtime options, resetting from defaults
 --- @param user_options? table User configuration overrides
 function M.setup(user_options)
-	if not user_options then return end
-	M.options = vim.tbl_deep_extend("force", M.options, user_options)
+	M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), user_options or {})
 end
 
 return M
