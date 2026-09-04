@@ -3,22 +3,37 @@
 
 local M = {}
 
---- Cache storing branch names keyed by directory path
+--- Cache storing root directories keyed by directory path
 --- @type table<string, string|false>
-local branch_cache = {}
+local dir_to_root = {}
 
---- Clear git branch filesystem cache
+--- Cache storing branch names keyed by git root path
+--- @type table<string, string|false>
+local root_branch_cache = {}
+
+--- Clear git branch and root filesystem cache
 function M.clear_cache()
-	branch_cache = {}
+	dir_to_root = {}
+	root_branch_cache = {}
 end
 
---- Resolve Git branch name using gitsigns variables or non-blocking .git/HEAD inspection
+--- Resolve Git branch name using buffer variables or non-blocking .git/HEAD inspection
 --- @return string|nil branch_name Resolved Git branch identifier, or nil if untracked
 function M.get_branch()
-	-- 1. Use gitsigns buffer variable if available
+	-- 1. Use buffer variables from git plugins if available
 	local head = vim.b.gitsigns_head
 	if head and head ~= "" then
 		return head
+	end
+
+	local mini_summary = vim.b.minigit_summary
+	if mini_summary and mini_summary.head_name and mini_summary.head_name ~= "" then
+		return mini_summary.head_name
+	end
+
+	local b_branch = vim.b.git_branch
+	if b_branch and b_branch ~= "" then
+		return b_branch
 	end
 
 	-- 2. Fast fallback via direct .git/HEAD file reading
@@ -26,29 +41,34 @@ function M.get_branch()
 	local directory = buffer_name ~= "" and vim.fs.dirname(buffer_name) or vim.uv.cwd()
 	if not directory then return nil end
 
-	if branch_cache[directory] ~= nil then
-		return branch_cache[directory] ~= false and branch_cache[directory] or nil
+	local root = dir_to_root[directory]
+	if root == nil then
+		root = vim.fs.root(directory, ".git") or false
+		dir_to_root[directory] = root
 	end
 
-	local git_root = vim.fs.find(".git", { upward = true, path = directory })[1]
-	if not git_root then
-		branch_cache[directory] = false
+	if not root then
 		return nil
 	end
 
-	local head_file_path = git_root .. "/HEAD"
-	local filesystem_stat = vim.uv.fs_stat(git_root)
+	if root_branch_cache[root] ~= nil then
+		return root_branch_cache[root] ~= false and root_branch_cache[root] or nil
+	end
+
+	local git_path = root .. "/.git"
+	local head_file_path = git_path .. "/HEAD"
+	local filesystem_stat = vim.uv.fs_stat(git_path)
 
 	-- Handle git worktrees or submodules pointing to a gitdir file
 	if filesystem_stat and filesystem_stat.type == "file" then
-		local file_handle = io.open(git_root, "r")
+		local file_handle = io.open(git_path, "r")
 		if file_handle then
 			local first_line = (file_handle:read("*l") or ""):gsub("\r", ""):gsub("%s*$", "")
 			file_handle:close()
 			local gitdir_path = first_line:match("gitdir:%s*(.+)")
 			if gitdir_path then
 				if not gitdir_path:match("^/") and not gitdir_path:match("^%a+:") then
-					gitdir_path = vim.fs.normalize(vim.fs.dirname(git_root) .. "/" .. gitdir_path)
+					gitdir_path = vim.fs.normalize(root .. "/" .. gitdir_path)
 				end
 				head_file_path = gitdir_path .. "/HEAD"
 			end
@@ -61,11 +81,11 @@ function M.get_branch()
 		file_handle:close()
 		local line_content = raw_line:gsub("\r", ""):gsub("%s*$", "")
 		local branch_name = line_content:match("ref: refs/heads/(%S+)") or (line_content ~= "" and line_content:sub(1, 7) or nil)
-		branch_cache[directory] = branch_name or false
+		root_branch_cache[root] = branch_name or false
 		return branch_name
 	end
 
-	branch_cache[directory] = false
+	root_branch_cache[root] = false
 	return nil
 end
 

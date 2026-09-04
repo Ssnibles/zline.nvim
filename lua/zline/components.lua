@@ -140,7 +140,7 @@ M.search = create_component(
 	function()
 		if not is_enabled("search") then return nil end
 		if vim.v.hlsearch ~= 1 then return nil end
-		local is_ok, search_result = pcall(vim.fn.searchcount, { maxcount = 999, timeout = 100 })
+		local is_ok, search_result = pcall(vim.fn.searchcount, { maxcount = 999, timeout = 25 })
 		if not is_ok or not search_result or not search_result.total or search_result.total == 0 then return nil end
 
 		local icon_glyph = config.options.use_icons and (config.options.icons and config.options.icons.search or "󰍉") or ""
@@ -161,12 +161,26 @@ M.git = create_component(
 		local icon_prefix = icon_glyph ~= "" and (icon_glyph .. " ") or ""
 
 		local diff_summary = ""
-		local git_dict = vim.b.gitsigns_status_dict
-		if config.options.coloured_diff and git_dict then
-			local added_lines = git_dict.added or 0
-			local changed_lines = git_dict.changed or 0
-			local removed_lines = git_dict.removed or 0
+		local added_lines = 0
+		local changed_lines = 0
+		local removed_lines = 0
+		local has_diff = false
 
+		local git_dict = vim.b.gitsigns_status_dict
+		if git_dict then
+			added_lines = git_dict.added or 0
+			changed_lines = git_dict.changed or 0
+			removed_lines = git_dict.removed or 0
+			has_diff = true
+		elseif vim.b.minidiff_summary then
+			local summary = vim.b.minidiff_summary
+			added_lines = summary.add or 0
+			changed_lines = summary.change or 0
+			removed_lines = summary.delete or 0
+			has_diff = true
+		end
+
+		if config.options.coloured_diff and has_diff then
 			local diff_parts = {}
 			if added_lines > 0 then
 				local add_symbol = (config.options.icons and config.options.icons.add) or "+"
@@ -190,7 +204,7 @@ M.git = create_component(
 			end
 		end
 
-		return " " .. icon_prefix .. branch_name .. diff_summary
+		return " " .. icon_prefix .. branch_name:gsub("%%", "%%%%") .. diff_summary
 	end,
 	function() return "StlGit" end
 )
@@ -216,10 +230,10 @@ M.diagnostics = create_component(
 
 		local count_parts = {}
 		if error_count > 0 then
-			table.insert(count_parts, "%%#StlDiagError#" .. error_icon .. " " .. error_count)
+			table.insert(count_parts, "%#StlDiagError#" .. error_icon .. " " .. error_count .. "%#StlDiag#")
 		end
 		if warning_count > 0 then
-			table.insert(count_parts, "%%#StlDiagWarn#" .. warning_icon .. " " .. warning_count)
+			table.insert(count_parts, "%#StlDiagWarn#" .. warning_icon .. " " .. warning_count .. "%#StlDiag#")
 		end
 		return " " .. table.concat(count_parts, " ")
 	end,
@@ -237,9 +251,15 @@ M.filename = create_component(
 		-- Handle special non-file buffer windows
 		if buffer_type ~= "" then
 			if buffer_type == "quickfix" then
-				local qf_list = vim.fn.getqflist({ idx = 0, size = 0 })
+				local is_loclist = false
+				local is_ok, win_info = pcall(vim.fn.getwininfo, vim.api.nvim_get_current_win())
+				if is_ok and win_info and win_info[1] and win_info[1].loclist == 1 then
+					is_loclist = true
+				end
+				local qf_list = is_loclist and vim.fn.getloclist(0, { idx = 0, size = 0 }) or vim.fn.getqflist({ idx = 0, size = 0 })
 				if qf_list and qf_list.size > 0 then
-					return " [QUICKFIX " .. qf_list.idx .. "/" .. qf_list.size .. "] "
+					local label = is_loclist and "LOCLIST" or "QUICKFIX"
+					return " [" .. label .. " " .. qf_list.idx .. "/" .. qf_list.size .. "] "
 				end
 			end
 			-- Terminal buffer: extract running command name from channel info
@@ -258,43 +278,56 @@ M.filename = create_component(
 			return " [" .. special_filetypes[file_type]:upper() .. "] "
 		end
 
-		local target_width = math.max(10, options.avail - (options.margin_right or 0))
-		local buffer_name = vim.api.nvim_buf_get_name(0)
-
-		if buffer_name == "" then return " [No Name] " end
-
 		local is_modified = vim.bo.modified and " +" or ""
 		local is_readonly = vim.bo.readonly and " =" or ""
 		local file_suffix = is_modified .. is_readonly
 
-		local file_icon = icons.get_icon("file", buffer_name) or icons.get_icon("filetype", vim.bo.filetype)
-		local icon_prefix = file_icon and (file_icon .. " ") or ""
+		local buffer_name = vim.api.nvim_buf_get_name(0)
+		if buffer_name == "" then return " [No Name]" .. file_suffix .. " " end
 
-		local relative_path = vim.fs.normalize(vim.fn.fnamemodify(buffer_name, ":."))
+		local target_width = math.max(10, options.avail - (options.margin_right or 0))
+
+		local file_icon = icons.get_icon("file", buffer_name) or icons.get_icon("filetype", file_type)
+		local icon_prefix = file_icon and (file_icon .. " ") or ""
+		local icon_w = vim.api.nvim_strwidth(icon_prefix)
+		local suffix_w = #file_suffix
+
+		local relative_path = vim.fs.normalize(vim.fn.fnamemodify(buffer_name, ":~:."))
 
 		-- Use full relative path if it fits within target width
-		if vim.fn.strwidth(icon_prefix .. relative_path) + #file_suffix <= target_width then
-			return " " .. icon_prefix .. relative_path .. file_suffix .. " "
+		if icon_w + vim.api.nvim_strwidth(relative_path) + suffix_w <= target_width then
+			return " " .. icon_prefix .. relative_path:gsub("%%", "%%%%") .. file_suffix .. " "
 		end
 
-		-- Progressive truncation: reconstruct path backwards segment by segment
+		-- Progressive truncation: compute segment budgets with integer math
 		local path_segments = vim.split(relative_path, "/")
-		local truncated_path = ""
+		local prefix_w = 2 -- display width of "…/"
+		local base_w = icon_w + suffix_w
+		local acc_w = 0
+		local count = 0
+
 		for i = #path_segments, 1, -1 do
-			local candidate_path = path_segments[i] .. (truncated_path ~= "" and "/" or "") .. truncated_path
-			local candidate_prefix = i > 1 and "…/" or ""
-			if vim.fn.strwidth(icon_prefix .. candidate_prefix .. candidate_path .. file_suffix) <= target_width then
-				truncated_path = candidate_path
+			local seg_w = vim.api.nvim_strwidth(path_segments[i])
+			local extra_slash = count > 0 and 1 or 0
+			local needed = base_w + (i > 1 and prefix_w or 0) + acc_w + seg_w + extra_slash
+			if needed <= target_width then
+				acc_w = acc_w + seg_w + extra_slash
+				count = count + 1
 			else
 				break
 			end
 		end
 
-		local has_parents = #path_segments > 1 and truncated_path ~= relative_path
-		local prefix = has_parents and "…/" or ""
-		local display_path = truncated_path ~= "" and truncated_path or path_segments[#path_segments]
+		local display_path
+		if count == 0 then
+			display_path = path_segments[#path_segments]
+		elseif count < #path_segments then
+			display_path = "…/" .. table.concat(path_segments, "/", #path_segments - count + 1, #path_segments)
+		else
+			display_path = relative_path
+		end
 
-		return " " .. icon_prefix .. prefix .. display_path .. file_suffix .. " "
+		return " " .. icon_prefix .. display_path:gsub("%%", "%%%%") .. file_suffix .. " "
 	end,
 	function() return "StlFile" end
 )
@@ -303,9 +336,8 @@ M.filename = create_component(
 M.dap_status = create_component(
 	function()
 		if not is_enabled("dap") then return nil end
-		if not package.loaded["dap"] then return nil end
-		local is_available, dap_module = pcall(require, "dap")
-		if not is_available or not dap_module then return nil end
+		local dap_module = package.loaded["dap"]
+		if not dap_module or type(dap_module.status) ~= "function" then return nil end
 		local status_text = dap_module.status()
 		if not status_text or status_text == "" then return nil end
 		local icon_glyph = config.options.use_icons and (config.options.icons and config.options.icons.dap or "󰃤") or "DBG"
@@ -332,15 +364,18 @@ M.format_warn = create_component(
 		if not is_enabled("format_warn") then return nil end
 		local file_format = vim.bo.fileformat
 		local file_encoding = vim.bo.fileencoding
-		local warning_parts = {}
 
-		if file_format ~= "" and file_format ~= "unix" then
+		local has_ff = file_format ~= "" and file_format ~= "unix"
+		local has_fe = file_encoding ~= "" and file_encoding ~= "utf-8" and file_encoding ~= "utf8"
+		if not has_ff and not has_fe then return nil end
+
+		local warning_parts = {}
+		if has_ff then
 			table.insert(warning_parts, file_format:upper())
 		end
-		if file_encoding ~= "" and file_encoding ~= "utf-8" and file_encoding ~= "utf8" then
+		if has_fe then
 			table.insert(warning_parts, file_encoding:upper())
 		end
-		if #warning_parts == 0 then return nil end
 
 		local icon_glyph = config.options.use_icons and (config.options.icons and config.options.icons.warn_fmt or "⚠") or ""
 		local icon_prefix = icon_glyph ~= "" and (icon_glyph .. " ") or ""
@@ -356,9 +391,13 @@ M.lsp = create_component(
 		local active_clients = vim.lsp.get_clients({ bufnr = 0 })
 		if #active_clients == 0 then return nil end
 
+		local seen = {}
 		local client_names = {}
 		for _, client in ipairs(active_clients) do
-			table.insert(client_names, client.name)
+			if not seen[client.name] then
+				seen[client.name] = true
+				table.insert(client_names, client.name)
+			end
 		end
 		return " " .. table.concat(client_names, ",") .. " "
 	end,

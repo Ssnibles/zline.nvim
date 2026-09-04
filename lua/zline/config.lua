@@ -94,14 +94,41 @@ M.defaults = {
 	},
 }
 
+--- Fast O(1) lookup sets for disabled filetypes and buftypes
+M.disabled_filetypes_set = {}
+M.disabled_buftypes_set = {}
+
+local function update_lookup_sets()
+	local ft_set = {}
+	for _, ft in ipairs(M.options.disabled_filetypes or {}) do
+		ft_set[ft] = true
+	end
+	M.disabled_filetypes_set = ft_set
+
+	local bt_set = {}
+	for _, bt in ipairs(M.options.disabled_buftypes or {}) do
+		bt_set[bt] = true
+	end
+	M.disabled_buftypes_set = bt_set
+end
+
 --- Active runtime configuration options
 --- @type ZlineOpts
 M.options = vim.deepcopy(M.defaults)
+update_lookup_sets()
 
 --- Merge user configuration into active runtime options, resetting from defaults
 --- @param user_options? table User configuration overrides
 function M.setup(user_options)
-	M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), user_options or {})
+	local merged = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), user_options or {})
+	for k in pairs(M.options) do
+		M.options[k] = nil
+	end
+	for k, v in pairs(merged) do
+		M.options[k] = v
+	end
+	update_lookup_sets()
 end
 
 return M
+

@@ -11,15 +11,15 @@ local default_highlight_links = {
 	StlModeN = "StatusLine",
 	StlModeI = "ModeMsg",
 	StlModeV = "Visual",
-	StlModeC = "Command",
-	StlModeS = "Select",
-	StlModeT = "Terminal",
-	StlModeR = "Replace",
+	StlModeC = "ModeMsg",
+	StlModeS = "Visual",
+	StlModeT = "Title",
+	StlModeR = "WarningMsg",
 	StlGit = "StlBar",
 	StlGitAdd = "GitSignsAdd",
 	StlGitChange = "GitSignsChange",
 	StlGitDelete = "GitSignsDelete",
-	StlDiag = "DiagnosticError",
+	StlDiag = "StlBar",
 	StlDiagError = "DiagnosticError",
 	StlDiagWarn = "DiagnosticWarn",
 	StlSearch = "IncSearch",
@@ -37,17 +37,19 @@ local default_highlight_links = {
 }
 
 local is_autocmd_setup = false
-local last_bar_bg = nil
+local last_bar_bg = false
 
 --- Synchronise normal statusline module backgrounds with StlBar background
 function M.sync_bar_background()
 	local bar_hl = vim.api.nvim_get_hl(0, { name = "StlBar", link = false })
-	if bar_hl.bg and bar_hl.bg ~= last_bar_bg then
+	local bar_bg = bar_hl.bg
+	if bar_bg ~= last_bar_bg then
 		local bar_linked_groups = {
 			"StlGit",
 			"StlGitAdd",
 			"StlGitChange",
 			"StlGitDelete",
+			"StlDiag",
 			"StlDiagError",
 			"StlDiagWarn",
 			"StlFile",
@@ -60,20 +62,26 @@ function M.sync_bar_background()
 			"StlCmdInfo",
 		}
 		for _, hl_name in ipairs(bar_linked_groups) do
-			local hl_def = vim.api.nvim_get_hl(0, { name = hl_name, link = false })
-			hl_def.bg = bar_hl.bg
-			hl_def.default = nil
-			vim.api.nvim_set_hl(0, hl_name, hl_def)
+			local existing = vim.api.nvim_get_hl(0, { name = hl_name, link = true })
+			if vim.tbl_isempty(existing) or existing.default then
+				local hl_def = vim.api.nvim_get_hl(0, { name = hl_name, link = false })
+				hl_def.bg = bar_bg
+				hl_def.default = true
+				vim.api.nvim_set_hl(0, hl_name, hl_def)
+			end
 		end
-		last_bar_bg = bar_hl.bg
+		last_bar_bg = bar_bg
 	end
 end
 
 --- Initialise highlight groups and derive foreground colours for prompt icons
 function M.setup()
-	last_bar_bg = nil
+	last_bar_bg = false
 	for highlight_group, target_link in pairs(default_highlight_links) do
-		vim.api.nvim_set_hl(0, highlight_group, { default = true, link = target_link })
+		local existing = vim.api.nvim_get_hl(0, { name = highlight_group, link = true })
+		if vim.tbl_isempty(existing) or existing.default then
+			vim.api.nvim_set_hl(0, highlight_group, { default = true, link = target_link })
+		end
 	end
 
 	-- Extract accent foreground colour for StlCmdPrompt from StlModeC without filled background block
@@ -101,10 +109,12 @@ function M.setup()
 
 	if not is_autocmd_setup then
 		is_autocmd_setup = true
-		vim.api.nvim_create_autocmd("ColorScheme", {
+		vim.api.nvim_create_autocmd({ "ColorScheme", "OptionSet" }, {
 			group = vim.api.nvim_create_augroup("ZlineHighlights", { clear = true }),
-			callback = function()
-				M.setup()
+			callback = function(args)
+				if args.event == "ColorScheme" or args.match == "background" then
+					M.setup()
+				end
 			end,
 		})
 	end

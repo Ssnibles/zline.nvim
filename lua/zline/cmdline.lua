@@ -6,16 +6,16 @@ local config = require("zline.config")
 local M = {}
 
 local is_cmdline_active = false
+local is_attached = false
+local namespace_id = vim.api.nvim_create_namespace("zline_cmdline")
 
 --- @class CmdlineData
 --- @field firstc string Prompt character (:, /, ?, =, @)
+--- @field prompt? string Input prompt text (e.g. for input())
 --- @field content string Current typed text content
---- @field pos integer 1-indexed cursor character position
-local cmdline_data = {
-	firstc = ":",
-	content = "",
-	pos = 1,
-}
+--- @field pos integer 0-indexed cursor byte position
+local cmdline_stack = {}
+local active_level = 0
 
 --- Pending redraw flag to coalesce multiple schedule calls within the same event loop tick
 local redraw_pending = false
@@ -30,6 +30,13 @@ local function schedule_redraw()
 	end)
 end
 
+--- Escape percent symbols for safe statusline interpolation
+--- @param str string
+--- @return string
+local function escape_stl(str)
+	return (str:gsub("%%", "%%%%"))
+end
+
 --- Check whether command-line mode is currently active
 --- @return boolean is_active
 function M.is_active()
@@ -39,14 +46,22 @@ end
 --- Render embedded command-line or search input bar for statusline
 --- @return string formatted_statusline
 function M.render()
-	local prompt_character = cmdline_data.firstc or ":"
-	local line_content = cmdline_data.content or ""
-	local cursor_position = cmdline_data.pos or 1
+	local active_data = cmdline_stack[active_level] or {}
+	local prompt_character = active_data.firstc or ":"
+	local custom_prompt = active_data.prompt
+	local line_content = active_data.content or ""
+	local byte_pos = active_data.pos or 0
 
-	local left_part = vim.fn.strcharpart(line_content, 0, cursor_position - 1)
-	local current_character = vim.fn.strcharpart(line_content, cursor_position - 1, 1)
+	-- Convert byte offset to character index for multibyte UTF-8 cursor positioning
+	local char_pos = vim.fn.charidx(line_content, byte_pos)
+	if char_pos < 0 then
+		char_pos = vim.fn.strchars(line_content)
+	end
+
+	local left_part = vim.fn.strcharpart(line_content, 0, char_pos)
+	local current_character = vim.fn.strcharpart(line_content, char_pos, 1)
 	if current_character == "" then current_character = " " end
-	local right_part = vim.fn.strcharpart(line_content, cursor_position)
+	local right_part = vim.fn.strcharpart(line_content, char_pos + 1)
 
 	local icon_symbol = (config.options.icons and config.options.icons.cmd) or ">"
 	local type_label = "COMMAND"
@@ -61,7 +76,7 @@ function M.render()
 		-- Compute live search match count for the pattern being typed
 		local direction_label = prompt_character == "/" and "FWD" or "BWD"
 		if line_content ~= "" then
-			local is_ok, search_result = pcall(vim.fn.searchcount, { pattern = line_content, maxcount = 999, timeout = 50 })
+			local is_ok, search_result = pcall(vim.fn.searchcount, { pattern = line_content, maxcount = 999, timeout = 25 })
 			if is_ok and search_result and search_result.total then
 				if search_result.total > 0 then
 					type_label = search_result.current .. "/" .. search_result.total .. " " .. direction_label
@@ -80,18 +95,33 @@ function M.render()
 	elseif prompt_character == "@" then
 		icon_symbol = "@"
 		type_label = "INPUT"
+	elseif (prompt_character == "" or prompt_character == ":") and custom_prompt and custom_prompt ~= "" then
+		icon_symbol = vim.trim(custom_prompt)
+		type_label = "PROMPT"
 	end
 
-	local prompt_segment = "%#" .. highlight_group .. "# " .. icon_symbol .. " %#StlCmdText#"
-	local content_segment = " " .. left_part .. "%#StlCmdPos#" .. current_character .. "%#StlCmdText#" .. right_part .. "%#StlBar#"
-	local info_segment = "%#StlCmdInfo# " .. type_label .. " %#StlBar#"
+	local prompt_segment = "%#" .. highlight_group .. "# " .. escape_stl(icon_symbol) .. " %#StlCmdText#"
+	local content_segment = " " .. escape_stl(left_part) .. "%#StlCmdPos#" .. escape_stl(current_character) .. "%#StlCmdText#" .. escape_stl(right_part) .. "%#StlBar#"
+	local info_segment = "%#StlCmdInfo# " .. escape_stl(type_label) .. " %#StlBar#"
 
 	return "%#StlBar#" .. prompt_segment .. content_segment .. "%=" .. info_segment
 end
 
+--- Detach vim.ui_attach ext_cmdline listener
+function M.teardown()
+	if not is_attached then return end
+	pcall(vim.ui_detach, namespace_id)
+	is_attached = false
+	is_cmdline_active = false
+	cmdline_stack = {}
+	active_level = 0
+end
+
 --- Initialise vim.ui_attach ext_cmdline listener for command-line interception
 function M.setup()
-	local namespace_id = vim.api.nvim_create_namespace("zline_cmdline")
+	if is_attached then return end
+	is_attached = true
+
 	pcall(vim.ui_attach, namespace_id, { ext_cmdline = true }, function(event_name, ...)
 		if event_name == "cmdline_show" then
 			local content_chunks = select(1, ...)
@@ -101,17 +131,42 @@ function M.setup()
 					table.insert(text_segments, chunk[2])
 				end
 			end
-			cmdline_data.content = table.concat(text_segments)
-			cmdline_data.pos = (select(2, ...) or 0) + 1
+			local level = select(6, ...) or 1
 			local firstc = select(3, ...)
-			cmdline_data.firstc = (firstc and firstc ~= "") and firstc or ":"
+			local prompt = select(4, ...)
+
+			cmdline_stack[level] = {
+				content = table.concat(text_segments),
+				pos = select(2, ...) or 0,
+				firstc = (firstc and firstc ~= "") and firstc or ":",
+				prompt = prompt,
+			}
+			active_level = level
 			is_cmdline_active = true
 			schedule_redraw()
 		elseif event_name == "cmdline_pos" then
-			cmdline_data.pos = (select(1, ...) or 0) + 1
+			local level = select(2, ...) or active_level
+			if cmdline_stack[level] then
+				cmdline_stack[level].pos = select(1, ...) or 0
+			end
 			schedule_redraw()
 		elseif event_name == "cmdline_hide" then
-			is_cmdline_active = false
+			local level = select(1, ...) or active_level
+			cmdline_stack[level] = nil
+
+			local max_level = 0
+			for lvl in pairs(cmdline_stack) do
+				if lvl > max_level then
+					max_level = lvl
+				end
+			end
+
+			if max_level > 0 then
+				active_level = max_level
+			else
+				is_cmdline_active = false
+				active_level = 0
+			end
 			schedule_redraw()
 		end
 	end)

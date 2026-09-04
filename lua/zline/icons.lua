@@ -7,8 +7,10 @@ local M = {}
 
 local mini_icons_module = nil
 local is_mini_loaded = false
+local devicons_module = nil
+local is_devicons_loaded = false
 
---- Safely retrieve an icon and highlight group from mini.icons
+--- Safely retrieve an icon and highlight group from mini.icons or nvim-web-devicons
 --- @param category string Category identifier ("file", "filetype", "extension", "directory")
 --- @param name string Target identifier name
 --- @return string|nil icon The resolved icon glyph, or nil if unassigned
@@ -18,6 +20,7 @@ function M.get_icon(category, name)
 		return nil, nil
 	end
 
+	-- 1. Try mini.icons
 	if not is_mini_loaded then
 		local is_available, module = pcall(require, "mini.icons")
 		if is_available and type(module) == "table" and type(module.get) == "function" then
@@ -27,14 +30,35 @@ function M.get_icon(category, name)
 	end
 
 	if mini_icons_module then
-		local is_successful, icon_glyph, highlight_group = pcall(mini_icons_module.get, category, name)
+		local is_successful, icon_glyph, highlight_group, is_default = pcall(mini_icons_module.get, category, name)
 		if is_successful and icon_glyph and icon_glyph ~= "" then
-			-- Filter out generic default symbol returned by mini.icons when category key is absent
-			local default_glyph = mini_icons_module.config and mini_icons_module.config.default
-			if type(default_glyph) == "string" and icon_glyph == default_glyph then
+			if is_default then
 				return nil, nil
 			end
 			return icon_glyph, highlight_group
+		end
+	end
+
+	-- 2. Fallback to nvim-web-devicons
+	if not is_devicons_loaded then
+		local is_available, module = pcall(require, "nvim-web-devicons")
+		if is_available and type(module) == "table" then
+			devicons_module = module
+		end
+		is_devicons_loaded = true
+	end
+
+	if devicons_module then
+		local icon, hl
+		if category == "file" then
+			local filename = vim.fs.basename(name)
+			local ext = vim.fn.fnamemodify(filename, ":e")
+			icon, hl = devicons_module.get_icon(filename, ext, { default = false })
+		elseif category == "filetype" and devicons_module.get_icon_by_filetype then
+			icon, hl = devicons_module.get_icon_by_filetype(name, { default = false })
+		end
+		if icon and icon ~= "" then
+			return icon, hl
 		end
 	end
 
