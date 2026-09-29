@@ -1,4 +1,4 @@
-{ lib, buildVimPlugin }:
+{ buildVimPlugin }:
 
 buildVimPlugin {
   pname = "zline-nvim";
