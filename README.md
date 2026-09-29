@@ -38,6 +38,13 @@ A blisteringly fast, modular, zero-dependency statusline plugin for Neovim writt
 
 ---
 
+## 📋 Requirements
+
+- Neovim **0.11+** (`vim.ui_attach`, `vim.fs.root`, `vim.uv`, `vim.diagnostic.count`, `vim.lsp.get_clients`).
+- Optional: [mini.icons](https://github.com/echasnovski/mini.icons) or [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) for file/filetype icons.
+
+---
+
 ## ⚙️ Options & Defaults
 
 ```lua
@@ -99,12 +106,18 @@ require("zline").setup({
 | :---------------- | :---------------- | :--------------------------------------------------------- |
 | `StlBar`          | `StatusLine`      | Primary statusline background and fill bar                 |
 | `StlBarNC`        | `StatusLineNC`    | Inactive split statusline background bar                   |
-| `StlModeN`        | `StatusLine`      | Normal Mode badge                                          |
+| `StlModeN`        | `StatusLine`      | Normal / Operator-pending Mode badge                       |
 | `StlModeI`        | `ModeMsg`         | Insert Mode badge                                          |
-| `StlModeV`        | `Visual`          | Visual Mode badge                                          |
-| `StlModeC`        | `Command`         | Command Mode badge                                         |
+| `StlModeV`        | `Visual`          | Visual / Select Mode badge                                 |
+| `StlModeC`        | `ModeMsg`         | Command Mode badge                                         |
+| `StlModeS`        | `Visual`          | Select Mode badge                                          |
+| `StlModeT`        | `Title`           | Terminal Mode badge                                        |
+| `StlModeR`        | `WarningMsg`      | Replace Mode badge                                         |
 | `StlCmdPrompt`    | Accent colour     | Command prompt icon (`>`) when `cmdline_prompt_bg = false` |
 | `StlSearchPrompt` | Search Accent     | Search prompt icon (`󰍉`) when `cmdline_prompt_bg = false`  |
+| `StlCmdText`      | `StlBar`          | Typed command-line text                                    |
+| `StlCmdPos`       | `Cursor`          | Command-line cursor cell                                   |
+| `StlCmdInfo`      | `Comment`         | Command-line mode/direction label                          |
 | `StlGit`          | `StlBar`          | Git branch indicator                                       |
 | `StlGitAdd`       | `GitSignsAdd`     | Git added line count (`+3`)                                |
 | `StlGitChange`    | `GitSignsChange`  | Git modified line count (`~2`)                             |
@@ -112,9 +125,13 @@ require("zline").setup({
 | `StlFile`         | `StlBar`          | Active file path display                                   |
 | `StlFT`           | `StlBar`          | Filetype indicator badge                                   |
 | `StlPos`          | `StlBar`          | Cursor position and total line count                       |
-| `StlDiag`         | `DiagnosticError` | LSP error & warning summary                                |
+| `StlMacro`        | `WarningMsg`      | Macro recording register badge                             |
+| `StlDiag`         | `StlBar`          | LSP diagnostics summary base highlight                     |
+| `StlDiagError`    | `DiagnosticError` | LSP error count badge                                      |
+| `StlDiagWarn`     | `DiagnosticWarn`  | LSP warning count badge                                    |
+| `StlLSP`          | `StlBar`          | Active LSP client names                                    |
 | `StlSearch`       | `IncSearch`       | Search match counter badge                                 |
-| `StlWarn`         | `WarningMsg`      | Format/encoding warning badge                              |
+| `StlWarn`         | `WarningMsg`      | Format/encoding/spell warning badge                        |
 | `StlSelection`    | `Visual`          | Visual selection range metrics                             |
 | `StlDap`          | `DiagnosticWarn`  | Active DAP debugger status                                 |
 
