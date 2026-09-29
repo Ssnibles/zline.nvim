@@ -31,10 +31,9 @@ function M.get_icon(category, name)
 
 	if mini_icons_module then
 		local is_successful, icon_glyph, highlight_group, is_default = pcall(mini_icons_module.get, category, name)
-		if is_successful and icon_glyph and icon_glyph ~= "" then
-			if is_default then
-				return nil, nil
-			end
+		-- A generic default icon is treated as "no icon" so nvim-web-devicons gets a
+		-- chance to provide a more specific glyph (when installed).
+		if is_successful and icon_glyph and icon_glyph ~= "" and not is_default then
 			return icon_glyph, highlight_group
 		end
 	end
