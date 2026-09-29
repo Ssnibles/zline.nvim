@@ -109,12 +109,21 @@ function M.setup()
 
 	if not is_autocmd_setup then
 		is_autocmd_setup = true
-		vim.api.nvim_create_autocmd({ "ColorScheme", "OptionSet" }, {
+		vim.api.nvim_create_autocmd({ "ColorScheme", "VimEnter", "UIEnter", "OptionSet" }, {
 			group = vim.api.nvim_create_augroup("ZlineHighlights", { clear = true }),
 			callback = function(args)
-				if args.event == "ColorScheme" or args.match == "background" then
-					M.setup()
+				if args.event == "OptionSet" and args.match ~= "background" then
+					return
 				end
+				M.setup()
+			end,
+		})
+		-- Keep the bar background in sync after late `StlBar` overrides without
+		-- paying for an `nvim_get_hl` call on every statusline redraw.
+		vim.api.nvim_create_autocmd("BufEnter", {
+			group = vim.api.nvim_create_augroup("ZlineBarSync", { clear = true }),
+			callback = function()
+				M.sync_bar_background()
 			end,
 		})
 	end
