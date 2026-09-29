@@ -3,6 +3,9 @@
 
 local M = {}
 
+--- Maximum number of directories to remember before flushing the caches
+local MAX_CACHE_ENTRIES = 128
+
 --- Cache storing root directories keyed by directory path
 --- @type table<string, string|false>
 local dir_to_root = {}
@@ -11,10 +14,19 @@ local dir_to_root = {}
 --- @type table<string, string|false>
 local root_branch_cache = {}
 
---- Clear git branch and root filesystem cache
-function M.clear_cache()
+--- Number of directory entries currently tracked (bounds cache growth)
+local cache_entries = 0
+
+--- Flush all git caches
+local function reset_cache()
 	dir_to_root = {}
 	root_branch_cache = {}
+	cache_entries = 0
+end
+
+--- Clear git branch and root filesystem cache
+function M.clear_cache()
+	reset_cache()
 end
 
 --- Resolve Git branch name using buffer variables or non-blocking .git/HEAD inspection
@@ -39,12 +51,20 @@ function M.get_branch()
 	-- 2. Fast fallback via direct .git/HEAD file reading
 	local buffer_name = vim.api.nvim_buf_get_name(0)
 	local directory = buffer_name ~= "" and vim.fs.dirname(buffer_name) or vim.uv.cwd()
-	if not directory then return nil end
+	if not directory then
+		return nil
+	end
 
 	local root = dir_to_root[directory]
 	if root == nil then
+		-- Bound memory usage: drop the caches wholesale when they grow too large.
+		-- They are pure caches and rebuild cheaply on the next lookup.
+		if cache_entries >= MAX_CACHE_ENTRIES then
+			reset_cache()
+		end
 		root = vim.fs.root(directory, ".git") or false
 		dir_to_root[directory] = root
+		cache_entries = cache_entries + 1
 	end
 
 	if not root then
@@ -80,7 +100,8 @@ function M.get_branch()
 		local raw_line = file_handle:read("*l") or ""
 		file_handle:close()
 		local line_content = raw_line:gsub("\r", ""):gsub("%s*$", "")
-		local branch_name = line_content:match("ref: refs/heads/(%S+)") or (line_content ~= "" and line_content:sub(1, 7) or nil)
+		local branch_name = line_content:match("ref: refs/heads/(%S+)")
+			or (line_content ~= "" and line_content:sub(1, 7) or nil)
 		root_branch_cache[root] = branch_name or false
 		return branch_name
 	end
