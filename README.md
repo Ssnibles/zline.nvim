@@ -7,7 +7,7 @@ A blisteringly fast, modular, zero-dependency statusline plugin for Neovim writt
 ## ✨ Features
 
 - **Zero-Latency Render Loop**: Built with fast C-API calls (`vim.api.nvim_win_get_cursor`, `vim.api.nvim_buf_line_count`), lazy-loaded `mini.icons`, and cached git resolution.
-- **Embedded Command-Line & Search Bar (`cmdheight=0`)**: Smoothly transforms the statusline into a styled command input bar when typing `:` commands or searching with `/` and `?`.
+- **Embedded Command-Line & Search Bar (`cmdheight=0`)**: Smoothly transforms the statusline into a styled command input bar when typing `:` commands or searching with `/` and `?`. The plugin sets `cmdheight=0` while enabled and restores your previous value when disabled.
 - **Smart Git Integration**: Instant `.git/HEAD` reader fallback with support for `gitsigns` variables and coloured diff counters (`+` green, `~` yellow, `-` red).
 - **Search Counter**: Displays active match count (`󰍉 3/14`) only during active searches.
 - **Visual Selection Metrics**: Shows line/character counts (`12c`, `4L`, `8L×24C`) when in Visual mode.
@@ -43,6 +43,12 @@ A blisteringly fast, modular, zero-dependency statusline plugin for Neovim writt
 - Neovim **0.11+** (`vim.ui_attach`, `vim.fs.root`, `vim.uv`, `vim.diagnostic.count`, `vim.lsp.get_clients`).
 - Optional: [mini.icons](https://github.com/echasnovski/mini.icons) or [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) for file/filetype icons.
 
+> [!NOTE]
+> When `cmdline_in_statusline` is enabled, zline sets `cmdheight=0` so the embedded
+> bar replaces the built-in command line, and restores your previous `cmdheight`
+> when the feature is turned off. Neovim only lets a statusline take over the
+> command line when no command-line row is reserved.
+
 ---
 
 ## ⚙️ Options & Defaults
@@ -51,7 +57,7 @@ A blisteringly fast, modular, zero-dependency statusline plugin for Neovim writt
 require("zline").setup({
   use_icons = true,             -- Enable mini.icons / Nerd Font glyphs
   coloured_diff = true,         -- Colour-code Git additions (+), changes (~), and deletions (-)
-  cmdline_in_statusline = true, -- Embed command-line and search input directly into the statusline
+  cmdline_in_statusline = true, -- Embed command-line and search input directly into the statusline (manages 'cmdheight' for you)
   cmdline_prompt_bg = false,    -- false: minimal accent prompt icon; true: solid background badge
   disabled_filetypes = {        -- Hide statusline in specific filetypes
     "ministarter",

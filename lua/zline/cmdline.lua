@@ -9,6 +9,12 @@ local is_cmdline_active = false
 local is_attached = false
 local namespace_id = vim.api.nvim_create_namespace("zline_cmdline")
 
+--- 'cmdheight' value from before the embedded bar was enabled, restored on teardown.
+--- Neovim only externalizes the command line when no UI reserves a command-line
+--- row, so the built-in line must be hidden ('cmdheight=0') for the statusline
+--- bar to replace it instead of stacking on top of it.
+local saved_cmdheight = nil
+
 --- @class CmdlineData
 --- @field firstc string Prompt character (:, /, ?, =, @)
 --- @field prompt? string Input prompt text (e.g. for input())
@@ -153,6 +159,10 @@ end
 
 --- Detach vim.ui_attach ext_cmdline listener
 function M.teardown()
+	if saved_cmdheight ~= nil then
+		vim.o.cmdheight = saved_cmdheight
+		saved_cmdheight = nil
+	end
 	if not is_attached then
 		return
 	end
@@ -241,6 +251,15 @@ function M.setup()
 	is_attached = attached_ok
 	if not attached_ok then
 		vim.notify("zline.nvim: failed to attach cmdline listener: " .. tostring(attach_error), vim.log.levels.WARN)
+		return
+	end
+
+	-- Hide the built-in command-line row so the statusline bar fully replaces it.
+	-- Without this the secondary ext_cmdline UI is intersected away by the TUI and
+	-- both the built-in cmdline and the embedded bar are drawn.
+	saved_cmdheight = vim.o.cmdheight
+	if saved_cmdheight ~= 0 then
+		vim.o.cmdheight = 0
 	end
 end
 
